@@ -15,8 +15,6 @@ Weights: w_s = 1 / (2 · E[χ²_s]² · w_ld_s)
 Standard errors: delete-one-block jackknife over ~200 LD blocks.
 """
 
-from __future__ import annotations
-
 import numpy as np
 import pandas as pd
 from pathlib import Path

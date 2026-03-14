@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import anndata as ad
 from pathlib import Path
-from scipy import sparse as sp
+from scipy import sparse
 
 import edgemap.annotation as ann
 from edgemap.annotation import build_annotation_ldscores, build_per_pair_ldscores
@@ -46,7 +46,7 @@ def test_build_annotation_ldscores_aligns_genes_and_computes_diagnostics(monkeyp
 def test_build_annotation_ldscores_accepts_sparse_weight_matrix(monkeypatch):
     # Sparse matrix path exercises W = W.tocsr() branch.
     wm = ad.AnnData(
-        X=sp.csc_matrix(
+        X=sparse.csc_matrix(
             np.array(
                 [
                     [1.0, 0.0],
@@ -73,7 +73,7 @@ def test_build_annotation_ldscores_accepts_sparse_weight_matrix(monkeypatch):
 
 
 def test_build_per_pair_ldscores_returns_empty_when_no_positive_scores(monkeypatch):
-    W = sp.csr_matrix(np.array([[1.0, 0.0], [0.0, 1.0]]))
+    W = sparse.csr_matrix(np.array([[1.0, 0.0], [0.0, 1.0]]))
     ann._weight_cache.clear()
     ann._weight_cache["__test__"] = (W, ["rs1", "rs2"], ["G1", "G2"])
 

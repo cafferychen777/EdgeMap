@@ -14,8 +14,6 @@ We sample from this distribution and feed the synthetic chi-squared
 values into the same S-LDSC regression, checking whether the method
 recovers the true architecture.
 """
-from __future__ import annotations
-
 import numpy as np
 import pandas as pd
 from dataclasses import dataclass

@@ -14,8 +14,6 @@ ligand reaching nearby cells, and the product with receptor expression models
 binding at the receiver. Validated by proximity ligation assay against actual
 protein-protein interactions (CytoSignal, bioRxiv 2024).
 """
-from __future__ import annotations
-
 import warnings
 import numpy as np
 import pandas as pd

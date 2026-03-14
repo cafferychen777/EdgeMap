@@ -22,7 +22,7 @@ import numpy as np
 import pandas as pd
 import anndata as ad
 from pathlib import Path
-from scipy import sparse as sp
+from scipy import sparse
 
 from .config import resolve_resource_dir
 
@@ -33,7 +33,7 @@ _weight_cache: dict[str, tuple] = {}
 
 def _get_snp_gene_weights(
     resource_dir: str | Path | None = None,
-) -> tuple[sp.spmatrix, list[str], list[str]]:
+) -> tuple[sparse.spmatrix, list[str], list[str]]:
     """Load the pre-computed SNP-gene weight matrix (cached).
 
     Keeps the matrix sparse -- the cis-window structure means most entries
@@ -45,8 +45,8 @@ def _get_snp_gene_weights(
         path = rdir / "quick_mode" / "snp_gene_weight_matrix.h5ad"
         wm = ad.read_h5ad(str(path))
         W = wm.X
-        if not sp.issparse(W):
-            W = sp.csr_matrix(W)
+        if not sparse.issparse(W):
+            W = sparse.csr_matrix(W)
         else:
             W = W.tocsr()
         _weight_cache[key] = (
