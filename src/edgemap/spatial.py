@@ -50,17 +50,15 @@ def _looks_like_counts(adata: ad.AnnData) -> bool:
     )
 
 
-def load_st(path: str, cfg: SpatialConfig) -> ad.AnnData:
-    """Load and preprocess spatial transcriptomics data.
+def preprocess_st(adata: ad.AnnData, cfg: SpatialConfig) -> ad.AnnData:
+    """Validate and preprocess spatial transcriptomics data (in-place).
 
     Expects raw counts by default. Set cfg.preprocessed=True to skip
     normalization if data is already log1p-normalized.
 
-    Raises ValueError if data looks pre-processed but preprocessed=False,
-    to prevent silent double-normalization.
+    Raises ValueError if .obsm['spatial'] is missing, or if data looks
+    pre-processed but preprocessed=False.
     """
-    adata = ad.read_h5ad(path)
-
     if "spatial" not in adata.obsm:
         raise ValueError("h5ad must contain .obsm['spatial']")
 
@@ -79,6 +77,11 @@ def load_st(path: str, cfg: SpatialConfig) -> ad.AnnData:
     sc.pp.normalize_total(adata, target_sum=1e4)
     sc.pp.log1p(adata)
     return adata
+
+
+def load_st(path: str, cfg: SpatialConfig) -> ad.AnnData:
+    """Load spatial transcriptomics data from h5ad and preprocess."""
+    return preprocess_st(ad.read_h5ad(path), cfg)
 
 
 def build_spatial_graph(

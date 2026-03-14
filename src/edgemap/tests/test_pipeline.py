@@ -159,6 +159,31 @@ def test_pipeline_results_json_includes_per_pair_fields(monkeypatch, tmp_path):
     assert (out_dir / "lr_pair_stats.json").exists()
 
 
+def test_pipeline_adata_direct_pass_writes_back(monkeypatch, tmp_path):
+    """Passing adata directly should write node/edge scores back to adata.var and adata.uns."""
+    adata = _toy_adata()
+    _patch_pipeline_common(monkeypatch, adata, edge_p=0.42)
+
+    # Patch preprocess_st to just return the copy as-is (skip normalization checks)
+    monkeypatch.setattr("edgemap.pipeline.preprocess_st", lambda a, cfg: a)
+
+    out_dir = tmp_path / "out_adata"
+    cfg = PipelineConfig(
+        gwas_sumstats="fake_sumstats.tsv",
+        gwas_label="fake_trait",
+        output_dir=str(out_dir),
+        resource_dir="/fake_resource",
+    )
+    output = run(cfg, adata=adata)
+
+    # Results written back to the original adata
+    assert "node_score" in adata.var.columns
+    assert "edge_score" in adata.var.columns
+    assert "edgemap" in adata.uns
+    assert adata.uns["edgemap"]["gwas_label"] == "fake_trait"
+    assert output["st_data"] == "AnnData (in-memory)"
+
+
 def test_pipeline_non_significant_edge_skips_per_pair(monkeypatch, tmp_path):
     """Non-significant edge tau should not trigger per-pair regression."""
     adata = _toy_adata()

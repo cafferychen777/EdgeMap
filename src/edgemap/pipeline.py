@@ -8,14 +8,15 @@ with consistent d_max filtering applied to both.
 
 import json
 import time
+from pathlib import Path
+
+import anndata as ad
 import numpy as np
 import pandas as pd
-from pathlib import Path
-from scipy import sparse
 from scipy.stats import spearmanr
 
 from .config import PipelineConfig, resolve_resource_dir
-from .spatial import load_st, build_spatial_graph, load_lr_pairs, compute_communication
+from .spatial import load_st, preprocess_st, build_spatial_graph, load_lr_pairs, compute_communication
 from .scores import compute_node_scores, compute_edge_scores
 from .annotation import build_annotation_ldscores, build_per_pair_ldscores
 from .regression import (
@@ -24,22 +25,38 @@ from .regression import (
 )
 
 
-def run(cfg: PipelineConfig) -> dict:
-    """Execute the full EdgeMap pipeline."""
+def run(cfg: PipelineConfig, adata: ad.AnnData | None = None) -> dict:
+    """Execute the full EdgeMap pipeline.
+
+    Args:
+        cfg: Pipeline configuration.
+        adata: Optional AnnData object. If provided, used instead of
+               loading from cfg.st_h5ad. A copy is made for preprocessing;
+               the original is not modified during computation. After
+               completion, results are written to adata.var and adata.uns.
+    """
+    if adata is None and not cfg.st_h5ad:
+        raise ValueError("Provide either st_h5ad in config or pass adata directly.")
+
     out = Path(cfg.output_dir)
     out.mkdir(parents=True, exist_ok=True)
     t_start = time.time()
     rdir = resolve_resource_dir(cfg.resource_dir)
 
+    st_label = Path(cfg.st_h5ad).stem if cfg.st_h5ad else "AnnData"
     print("=" * 60)
-    print(f"EdgeMap: {cfg.gwas_label} x {Path(cfg.st_h5ad).stem}")
+    print(f"EdgeMap: {cfg.gwas_label} x {st_label}")
     print("=" * 60)
 
     # -- Step 1: Load ST, build spatial graph -----------------------
     print(f"\n[1/7] Loading ST data and building spatial graph...")
     t0 = time.time()
-    adata = load_st(cfg.st_h5ad, cfg.spatial)
-    coords = adata.obsm["spatial"].astype(np.float32)
+    adata_input = adata  # keep reference for result write-back
+    if adata is not None:
+        adata_work = preprocess_st(adata.copy(), cfg.spatial)
+    else:
+        adata_work = load_st(cfg.st_h5ad, cfg.spatial)
+    coords = adata_work.obsm["spatial"].astype(np.float32)
 
     W, knn_idx, knn_valid = build_spatial_graph(
         coords,
@@ -49,7 +66,7 @@ def run(cfg: PipelineConfig) -> dict:
     )
 
     n_filtered = int((~knn_valid[:, 1:]).sum())
-    print(f"  {adata.shape[0]:,} cells x {adata.shape[1]:,} genes")
+    print(f"  {adata_work.shape[0]:,} cells x {adata_work.shape[1]:,} genes")
     print(f"  Spatial graph: {W.nnz:,} edges"
           + (f" ({n_filtered} neighbor slots beyond d_max)" if n_filtered else ""))
     print(f"  {time.time() - t0:.1f}s")
@@ -58,11 +75,11 @@ def run(cfg: PipelineConfig) -> dict:
     print(f"\n[2/7] Computing spatial communication for LR pairs...")
     t0 = time.time()
 
-    pairs = load_lr_pairs(adata)
-    genes = adata.var_names.tolist()
+    pairs = load_lr_pairs(adata_work)
+    genes = adata_work.var_names.tolist()
 
     comm, pair_names, pair_genes = compute_communication(
-        adata.X, W, pairs, genes,
+        adata_work.X, W, pairs, genes,
     )
 
     print(f"  {len(pairs)} active LR pairs, {comm.shape[0]:,} cells")
@@ -86,8 +103,8 @@ def run(cfg: PipelineConfig) -> dict:
     t0 = time.time()
 
     # Pass sparse X directly — compute_node_scores densifies per chunk
-    node_arr = compute_node_scores(adata.X, knn_idx, knn_valid, cfg.score)
-    del adata  # free AnnData
+    node_arr = compute_node_scores(adata_work.X, knn_idx, knn_valid, cfg.score)
+    del adata_work  # free working copy
 
     node_scores = pd.Series(node_arr, index=genes)
     print(f"  {(node_arr > 0).sum()} genes with node signal")
@@ -181,7 +198,7 @@ def run(cfg: PipelineConfig) -> dict:
     # -- Save --------------------------------------------------------
     output = {
         "gwas_label": cfg.gwas_label,
-        "st_data": str(cfg.st_h5ad),
+        "st_data": str(cfg.st_h5ad) if cfg.st_h5ad else "AnnData (in-memory)",
         "params": {
             "k_spatial": cfg.spatial.k_spatial,
             "dis_thr": cfg.spatial.dis_thr,
@@ -210,6 +227,12 @@ def run(cfg: PipelineConfig) -> dict:
         json.dump(output, f, indent=2)
     with open(out / "lr_pair_stats.json", "w") as f:
         json.dump(lr_stats, f, indent=2)
+
+    # Write results back to user's AnnData if provided
+    if adata_input is not None:
+        adata_input.var["node_score"] = node_scores.reindex(adata_input.var_names, fill_value=0.0).values
+        adata_input.var["edge_score"] = edge_scores.reindex(adata_input.var_names, fill_value=0.0).values
+        adata_input.uns["edgemap"] = output
 
     print(f"Saved to {out}/")
     return output

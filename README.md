@@ -116,6 +116,27 @@ results = edgemap.run(edgemap.PipelineConfig(
 ))
 ```
 
+You can also pass an AnnData object directly — results are written back to `adata.var` and `adata.uns`:
+
+```python
+import scanpy as sc
+import edgemap
+
+adata = sc.read_visium("/path/to/spaceranger/outs")
+
+edgemap.run(edgemap.PipelineConfig(
+    gwas_sumstats="munged_trait.sumstats.gz",
+    gwas_label="Systolic blood pressure",
+    output_dir="results/sbp_heart",
+    resource_dir="/path/to/gsMap_resource",
+), adata=adata)
+
+# Results stored in adata
+adata.var["node_score"]   # per-gene expression specificity
+adata.var["edge_score"]   # per-gene communication specificity
+adata.uns["edgemap"]      # full results dict
+```
+
 ### Parameters
 
 | Parameter | Default | When to change |
