@@ -46,6 +46,7 @@ adata.write("my_tissue.h5ad")
 Notes:
 - EdgeMap expects **raw counts** by default and applies its own normalization. If your data is already log1p-normalized, pass `--preprocessed`.
 - The bundled LR database ([LIANA Consensus](https://github.com/saezlab/liana), 4,624 pairs) uses **human gene symbols**. For non-human data, convert gene names to human orthologs first.
+- When using the Python API, you can pass the AnnData directly without saving to a file — see [Python API](#python-api) below.
 
 ### 2. GWAS summary statistics
 
@@ -139,16 +140,28 @@ adata.uns["edgemap"]      # full results dict
 
 ### Parameters
 
-| Parameter | Default | When to change |
-|-----------|---------|----------------|
-| `--k-spatial` | 6 | Increase for denser tissues (e.g. 10 for brain cortex), decrease for sparser layouts |
-| `--dis-thr` | 3000 | Distance threshold in **coordinate units** (same as `.obsm["spatial"]`). For Visium pixel coordinates, 3000 ≈ 15 spot diameters. Adjust for other platforms or unit systems |
-| `--n-blocks` | 200 | Jackknife blocks for standard errors. Rarely needs changing |
-| `--preprocessed` | off | Set if data is already log1p-normalized to skip normalization |
+| CLI | Python | Default | When to change |
+|-----|--------|---------|----------------|
+| `--k-spatial` | `spatial.k_spatial` | 6 | Increase for denser tissues (e.g. 10 for brain cortex), decrease for sparser layouts |
+| `--dis-thr` | `spatial.dis_thr` | 3000 | Distance threshold in **coordinate units** (same as `.obsm["spatial"]`). For Visium pixel coordinates, 3000 ≈ 15 spot diameters. Adjust for other platforms or unit systems |
+| `--n-blocks` | `regression.n_blocks` | 200 | Jackknife blocks for standard errors. Rarely needs changing |
+| `--preprocessed` | `spatial.preprocessed` | off | Set if data is already log1p-normalized to skip normalization |
+
+Python parameter example:
+
+```python
+edgemap.run(edgemap.PipelineConfig(
+    gwas_sumstats="munged_trait.sumstats.gz",
+    gwas_label="Systolic blood pressure",
+    output_dir="results/sbp_heart",
+    spatial=edgemap.SpatialConfig(k_spatial=10, dis_thr=5000),
+    regression=edgemap.RegressionConfig(n_blocks=100),
+), adata=adata)
+```
 
 ## Output
 
-All files are written to `--output`:
+All files are written to `--output` (`output_dir` in Python):
 
 ### `results.json`
 
