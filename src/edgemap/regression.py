@@ -79,6 +79,23 @@ def load_sumstats(path: str, cfg: RegressionConfig) -> pd.DataFrame:
     return ss[["SNP", "Z", "N"]].drop_duplicates("SNP")
 
 
+def _sldsc_weights(
+    y: np.ndarray,
+    baseline_ld: np.ndarray,
+    w_ld_vals: np.ndarray,
+    N_bar: float,
+    M_total: float,
+) -> np.ndarray:
+    """S-LDSC regression weights: heteroscedasticity × LD correction.
+
+    w_s = 1 / (2 · E[χ²_s]² · w_ld_s)
+    """
+    x_tot = baseline_ld.sum(axis=1)
+    h2_init = np.clip((y.mean() - 1) * M_total / (N_bar * x_tot.mean()), 0.01, 1.0)
+    Ey = 1.0 + np.clip(h2_init * N_bar / M_total * x_tot, 0, 1e4)
+    return 1.0 / (2.0 * Ey**2 * w_ld_vals)
+
+
 def _block_jackknife(
     Xw: np.ndarray, yw: np.ndarray, n_blocks: int,
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -92,6 +109,7 @@ def _block_jackknife(
     divisible by n_blocks.
     """
     n, p = Xw.shape
+    n_blocks = min(n_blocks, n)
 
     # Full regression via normal equations
     XtX = Xw.T @ Xw
@@ -145,6 +163,8 @@ def run_sldsc(
         .rename(columns={"L2": "w_ld"})
     )
     n_snps = len(df)
+    if n_snps == 0:
+        raise ValueError("No SNPs remain after merging sumstats, baseline, annotations, and weights.")
 
     y = (df["Z"] ** 2).values
     N = df["N"].values
@@ -159,12 +179,8 @@ def run_sldsc(
     X = np.column_stack([N * ell for ell in ell_arrays] + [np.ones(n_snps)])
 
     # Regression weights: heteroscedasticity × LD overlap correction
-    # Total baseline LD for E[χ²] estimate
-    x_tot = df[baseline_cols].values.sum(axis=1)
     w_ld_vals = np.maximum(df["w_ld"].values, 1.0)
-    h2_init = np.clip((y.mean() - 1) * M_total / (Nbar * x_tot.mean()), 0.01, 1.0)
-    Ey = 1.0 + np.clip(h2_init * Nbar / M_total * x_tot, 0, 1e4)
-    w = 1.0 / (2.0 * Ey**2 * w_ld_vals)
+    w = _sldsc_weights(y, df[baseline_cols].values, w_ld_vals, Nbar, M_total)
 
     # Weighted LS with block jackknife
     sqrtw = np.sqrt(w)
@@ -237,10 +253,13 @@ def run_per_pair_ldsc(
     df_base = df_base[valid].copy()
     snp_idx = df_snp_indices[valid].astype(int).values
 
+    n_snps = len(df_base)
+    if n_snps == 0:
+        raise ValueError("No SNPs remain after merging sumstats, baseline, node annotations, and weights.")
+
     y = (df_base["Z"] ** 2).values
     N = df_base["N"].values
     Nbar = N.mean()
-    n_snps = len(df_base)
 
     baseline_cols = [c for c in baseline.columns if c != "SNP"]
     ell_node = df_base["ell_node"].values.astype(np.float64)
@@ -248,10 +267,7 @@ def run_per_pair_ldsc(
     w_ld_vals = np.maximum(df_base["w_ld"].values, 1.0)
 
     # Precompute weights and base design matrix (shared across all pairs)
-    x_tot = baseline_ld.sum(axis=1)
-    h2_init = np.clip((y.mean() - 1) * M_total / (Nbar * x_tot.mean()), 0.01, 1.0)
-    Ey = 1.0 + np.clip(h2_init * Nbar / M_total * x_tot, 0, 1e4)
-    w = 1.0 / (2.0 * Ey**2 * w_ld_vals)
+    w = _sldsc_weights(y, baseline_ld, w_ld_vals, Nbar, M_total)
     sqrtw = np.sqrt(w)
 
     # Base design: [N*baseline, N*node, 1]  -- pair column appended per iteration

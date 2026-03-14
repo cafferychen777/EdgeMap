@@ -157,7 +157,7 @@ def load_lr_pairs(
     # Precompute cells-per-gene for filtering (O(nnz), done once)
     X = adata.X
     n_cells = X.shape[0]
-    min_cells = int(n_cells * min_cell_pct)
+    min_cells = max(int(n_cells * min_cell_pct), 1)
     if sparse.issparse(X):
         cells_per_gene = np.array((X > 0).sum(axis=0)).flatten()
     else:

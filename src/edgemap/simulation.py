@@ -21,7 +21,7 @@ import pandas as pd
 from dataclasses import dataclass
 from scipy.stats import norm
 
-from .regression import _block_jackknife
+from .regression import _block_jackknife, _sldsc_weights
 
 
 @dataclass
@@ -142,11 +142,8 @@ def run_simulation(
         ell_arrays += [ell_node, ell_edge]
         X = np.column_stack([N_bar * arr for arr in ell_arrays] + [np.ones(n_snps)])
 
-        # Weights (same as run_sldsc)
-        x_tot = baseline_ld.sum(axis=1)
-        h2_init = np.clip((chisq.mean() - 1) * M_total / (N_bar * x_tot.mean()), 0.01, 1.0)
-        Ey = 1.0 + np.clip(h2_init * N_bar / M_total * x_tot, 0, 1e4)
-        w = 1.0 / (2.0 * Ey**2 * w_ld_vals)
+        # Weights (same formula as run_sldsc)
+        w = _sldsc_weights(chisq, baseline_ld, w_ld_vals, N_bar, M_total)
 
         sqrtw = np.sqrt(w)
         Xw = X * sqrtw[:, None]

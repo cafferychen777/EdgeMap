@@ -237,3 +237,28 @@ def test_load_lr_pairs_sparse_input_branch(tmp_path, monkeypatch):
 def test_looks_like_counts_sparse_empty_data_returns_true():
     adata = ad.AnnData(X=sparse.csr_matrix((3, 4)))
     assert _looks_like_counts(adata) is True
+
+
+def test_load_lr_pairs_min_cells_at_least_one(tmp_path, monkeypatch):
+    """With very few cells, min_cells should be at least 1 (not 0)."""
+    adata = ad.AnnData(
+        X=np.array(
+            [
+                [0, 1],  # G1 absent, G2 present
+                [0, 1],
+            ],
+            dtype=np.float32,
+        ),
+        var=pd.DataFrame(index=["G1", "G2"]),
+    )
+
+    lr_path = tmp_path / "lr.csv"
+    pd.DataFrame(
+        [{"resource": "consensus", "source_genesymbol": "G1", "target_genesymbol": "G2"}]
+    ).to_csv(lr_path, index=False)
+
+    monkeypatch.setattr("edgemap.spatial.get_lr_database", lambda: lr_path)
+    # min_cell_pct=0.05 on 2 cells → int(0.1) = 0 without the fix
+    # G1 expressed in 0 cells, should be filtered out even with 2 cells
+    pairs = load_lr_pairs(adata, min_cell_pct=0.05)
+    assert pairs == []

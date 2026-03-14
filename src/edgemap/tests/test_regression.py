@@ -7,6 +7,7 @@ from pathlib import Path
 from edgemap.config import RegressionConfig
 from edgemap.regression import (
     _block_jackknife,
+    _sldsc_weights,
     load_baseline,
     load_regression_weights,
     load_sumstats,
@@ -218,3 +219,42 @@ def test_run_sldsc_handles_zero_se_without_inf(monkeypatch):
         assert out[key]["z"] == 0.0
         assert out[key]["p_onesided"] == 0.5
         assert out[key]["p_twosided"] == 1.0
+
+
+def test_run_sldsc_raises_on_empty_merge():
+    """No overlapping SNPs → ValueError."""
+    sumstats = pd.DataFrame({"SNP": ["rs1"], "Z": [2.0], "N": [1000]})
+    baseline = pd.DataFrame({"SNP": ["rsX"], "base1": [0.5]})
+    annot_ld = pd.DataFrame({"SNP": ["rsX"], "ell_node": [0.1], "ell_edge": [0.2]})
+    w_ld = pd.DataFrame({"SNP": ["rsX"], "L2": [1.0]})
+
+    with pytest.raises(ValueError, match="No SNPs remain"):
+        run_sldsc(sumstats, baseline, annot_ld, w_ld, 1e6, RegressionConfig())
+
+
+def test_block_jackknife_clamps_blocks_to_n():
+    """n_blocks > n should not crash (clamped internally)."""
+    Xw = np.array([[1.0, 2.0], [3.0, 4.0]])
+    yw = np.array([1.0, 2.0])
+    beta, se = _block_jackknife(Xw, yw, n_blocks=100)
+    assert beta.shape == (2,)
+    assert np.all(np.isfinite(beta))
+
+
+def test_sldsc_weights_matches_inline():
+    """Shared _sldsc_weights matches the original inline computation."""
+    rng = np.random.RandomState(42)
+    y = rng.rand(50) * 5 + 1
+    baseline_ld = rng.rand(50, 3)
+    w_ld_vals = np.maximum(rng.rand(50), 0.1)
+    N_bar, M_total = 50000.0, 1e6
+
+    w = _sldsc_weights(y, baseline_ld, w_ld_vals, N_bar, M_total)
+
+    # Inline reference
+    x_tot = baseline_ld.sum(axis=1)
+    h2_init = np.clip((y.mean() - 1) * M_total / (N_bar * x_tot.mean()), 0.01, 1.0)
+    Ey = 1.0 + np.clip(h2_init * N_bar / M_total * x_tot, 0, 1e4)
+    expected = 1.0 / (2.0 * Ey**2 * w_ld_vals)
+
+    np.testing.assert_allclose(w, expected, rtol=1e-15)
