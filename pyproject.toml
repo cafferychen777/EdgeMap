@@ -1,0 +1,28 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "edgemap"
+version = "0.1.0"
+description = "Edge-centric heritability mapping via spatial cell-cell communication"
+requires-python = ">=3.10"
+license = "MIT"
+dependencies = [
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "scipy>=1.10",
+    "anndata>=0.9",
+    "scanpy>=1.9",
+    "scikit-learn>=1.2",
+]
+
+[project.scripts]
+edgemap = "edgemap.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/edgemap"]
+exclude = ["src/edgemap/tests/"]
+
+[tool.pytest.ini_options]
+testpaths = ["src/edgemap/tests"]

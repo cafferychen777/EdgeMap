@@ -1,0 +1,17 @@
+# Everything ignored by default
+*
+
+# Python package — the only public-facing code
+!.gitignore
+!README.md
+!pyproject.toml
+!src/
+!src/edgemap/
+!src/edgemap/**
+
+# Exclude build/cache artifacts that land inside src/
+src/edgemap/**/__pycache__/
+src/edgemap/**/*.pyc
+*.egg-info/
+dist/
+build/
