@@ -269,6 +269,7 @@ def run_per_pair_ldsc(
     # Precompute weights and base design matrix (shared across all pairs)
     w = _sldsc_weights(y, baseline_ld, w_ld_vals, Nbar, M_total)
     sqrtw = np.sqrt(w)
+    yw = y * sqrtw
 
     # Base design: [N*baseline, N*node, 1]  -- pair column appended per iteration
     X_base = np.column_stack(
@@ -294,7 +295,6 @@ def run_per_pair_ldsc(
         ])
 
         Xw = X * sqrtw[:, None]
-        yw = y * sqrtw
 
         beta_hat, jk_se = _block_jackknife(Xw, yw, cfg.n_blocks)
 

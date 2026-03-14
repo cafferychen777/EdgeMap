@@ -121,11 +121,15 @@ def run_simulation(
     ell_edge = df["ell_edge"].values.astype(np.float64)
     w_ld_vals = np.maximum(df["w_ld"].values, 1.0)
     n_snps = len(df)
+    if n_snps == 0:
+        raise ValueError("No SNPs remain after merging baseline, annotations, and weights.")
 
-    # Design matrix columns (same as run_sldsc)
-    annot_names = baseline_cols + ["ell_node", "ell_edge"]
+    # Design matrix (constant across reps — only weights change)
     node_idx = len(baseline_cols)      # index of ell_node in beta
     edge_idx = len(baseline_cols) + 1  # index of ell_edge in beta
+    ell_arrays = [baseline_ld[:, i] for i in range(baseline_ld.shape[1])]
+    ell_arrays += [ell_node, ell_edge]
+    X = np.column_stack([N_bar * arr for arr in ell_arrays] + [np.ones(n_snps)])
 
     results = []
     for rep in range(cfg.n_reps):
@@ -137,12 +141,7 @@ def run_simulation(
             rng,
         )
 
-        # Construct design matrix: [N * ℓ_1, ..., N * ℓ_k, 1]
-        ell_arrays = [baseline_ld[:, i] for i in range(baseline_ld.shape[1])]
-        ell_arrays += [ell_node, ell_edge]
-        X = np.column_stack([N_bar * arr for arr in ell_arrays] + [np.ones(n_snps)])
-
-        # Weights (same formula as run_sldsc)
+        # Weights vary per rep (depend on synthetic chisq)
         w = _sldsc_weights(chisq, baseline_ld, w_ld_vals, N_bar, M_total)
 
         sqrtw = np.sqrt(w)

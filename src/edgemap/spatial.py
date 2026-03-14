@@ -229,14 +229,17 @@ def compute_communication(
 
     gene_to_idx = {g: i for i, g in enumerate(gene_names)}
 
+    # Convert to CSC for efficient column slicing (same as compute_node_scores)
+    X_work = X.tocsc() if sparse.issparse(X) else X
+
     # Pre-extract all needed gene columns to natural scale (expm1).
     # Many pairs share genes (e.g. ITGB1 in 50+ pairs), so caching
-    # avoids redundant sparse column extraction + todense + expm1.
+    # avoids redundant sparse column extraction + expm1.
     needed_indices = set()
     for ligs, recs, _ in pairs:
         for g in ligs + recs:
             needed_indices.add(gene_to_idx[g])
-    col_cache = _preextract_columns(X, sorted(needed_indices))
+    col_cache = _preextract_columns(X_work, sorted(needed_indices))
 
     comm = np.empty((n_cells, len(pairs)), dtype=np.float64)
     pair_names = []
@@ -264,7 +267,7 @@ def _preextract_columns(
     for idx in indices:
         col = X[:, idx]
         if sparse.issparse(col):
-            col = np.asarray(col.todense()).flatten()
+            col = col.toarray().flatten()
         else:
             col = np.asarray(col).flatten()
         cache[idx] = np.expm1(col)
