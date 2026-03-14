@@ -28,9 +28,9 @@ Dependencies (numpy, scipy, scanpy, scikit-learn, anndata) are installed automat
 
 ## Input preparation
 
-### 1. Spatial transcriptomics data (`.h5ad`)
+### 1. Spatial transcriptomics data
 
-An AnnData file with a gene expression matrix and spatial coordinates in `.obsm["spatial"]`.
+An AnnData with a gene expression matrix and spatial coordinates in `.obsm["spatial"]`.
 
 **From 10x Space Ranger output** (most common):
 
@@ -38,15 +38,14 @@ An AnnData file with a gene expression matrix and spatial coordinates in `.obsm[
 import scanpy as sc
 
 adata = sc.read_visium("/path/to/spaceranger/outs")
-adata.write("my_tissue.h5ad")
 ```
 
 **From other platforms** (Slide-seq, MERFISH, STARmap, etc.): create an AnnData with your expression matrix and store coordinates as `adata.obsm["spatial"]` (shape `n_cells × 2`).
 
-Notes:
-- EdgeMap expects **raw counts** by default and applies its own normalization. If your data is already log1p-normalized, pass `--preprocessed`.
-- The bundled LR database ([LIANA Consensus](https://github.com/saezlab/liana), 4,624 pairs) uses **human gene symbols**. For non-human data, convert gene names to human orthologs first.
-- When using the Python API, you can pass the AnnData directly without saving to a file — see [Python API](#python-api) below.
+Requirements:
+- **Raw counts** — EdgeMap applies its own normalization. If your data is already log1p-normalized, set `preprocessed` (see [Parameters](#parameters)).
+- **Human gene symbols** — the bundled LR database ([LIANA Consensus](https://github.com/saezlab/liana), 4,624 pairs) uses human symbols. For non-human data, convert gene names to human orthologs first.
+- For CLI usage, save to `.h5ad` first: `adata.write("my_tissue.h5ad")`
 
 ### 2. GWAS summary statistics
 
@@ -106,20 +105,6 @@ edgemap \
 ### Python API
 
 ```python
-import edgemap
-
-results = edgemap.run(edgemap.PipelineConfig(
-    st_h5ad="my_tissue.h5ad",
-    gwas_sumstats="munged_trait.sumstats.gz",
-    gwas_label="Systolic blood pressure",
-    output_dir="results/sbp_heart",
-    resource_dir="/path/to/gsMap_resource",
-))
-```
-
-You can also pass an AnnData object directly — results are written back to `adata.var` and `adata.uns`:
-
-```python
 import scanpy as sc
 import edgemap
 
@@ -136,6 +121,18 @@ edgemap.run(edgemap.PipelineConfig(
 adata.var["node_score"]   # per-gene expression specificity
 adata.var["edge_score"]   # per-gene communication specificity
 adata.uns["edgemap"]      # full results dict
+```
+
+For file-based workflows (e.g. batch scripts), pass a path instead:
+
+```python
+results = edgemap.run(edgemap.PipelineConfig(
+    st_h5ad="my_tissue.h5ad",
+    gwas_sumstats="munged_trait.sumstats.gz",
+    gwas_label="Systolic blood pressure",
+    output_dir="results/sbp_heart",
+    resource_dir="/path/to/gsMap_resource",
+))
 ```
 
 ### Parameters
