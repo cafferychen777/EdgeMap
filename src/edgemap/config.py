@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 from importlib.resources import files
 from pathlib import Path
 
+import numpy as np
+
 
 # ── Resource resolution ─────────────────────────────────────────────
 
@@ -52,6 +54,30 @@ def get_lr_database() -> Path:
     return files("edgemap").joinpath("data", "liana_consensus.csv")
 
 
+def resolve_gene_chunk_size(n_cells: int, requested: int | None) -> int:
+    """Resolve node-score gene chunk size.
+
+    If the user provides an explicit chunk size, use it directly.
+    Otherwise, choose the largest chunk whose four main float32 work buffers
+    stay within roughly 256 MiB:
+
+        x_chunk, ranks, local, contrib
+
+    This keeps memory bounded on large datasets without changing results.
+    """
+    if n_cells <= 0:
+        raise ValueError("n_cells must be > 0")
+    if requested is not None:
+        if requested <= 0:
+            raise ValueError("gene_chunk_size must be > 0")
+        return requested
+
+    target_bytes = 256 * 1024 * 1024
+    bytes_per_gene = 4 * np.dtype(np.float32).itemsize * n_cells
+    auto_chunk = max(target_bytes // bytes_per_gene, 1)
+    return int(np.clip(auto_chunk, 16, 2000))
+
+
 # ── Parameter dataclasses ───────────────────────────────────────────
 
 
@@ -69,7 +95,7 @@ class ScoreConfig:
     """Parameters for node/edge score computation."""
     edge_agg_percentile: float = 95.0
     kernel_bandwidth_frac: float = 1.0 / 3.0
-    gene_chunk_size: int = 2000
+    gene_chunk_size: int | None = None
 
 
 @dataclass
@@ -78,6 +104,10 @@ class RegressionConfig:
     n_blocks: int = 200
     chisq_max_factor: float = 0.001
     chisq_max_floor: float = 80.0
+
+    def __post_init__(self) -> None:
+        if self.n_blocks <= 0:
+            raise ValueError("n_blocks must be > 0")
 
 
 @dataclass

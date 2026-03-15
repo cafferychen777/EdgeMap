@@ -8,6 +8,7 @@ with consistent d_max filtering applied to both.
 
 import json
 import time
+from dataclasses import replace
 from pathlib import Path
 
 import anndata as ad
@@ -15,7 +16,8 @@ import numpy as np
 import pandas as pd
 from scipy.stats import spearmanr
 
-from .config import PipelineConfig, resolve_resource_dir
+from ._matrix import ensure_csc_matrix
+from .config import PipelineConfig, resolve_gene_chunk_size, resolve_resource_dir
 from .spatial import load_st, preprocess_st, build_spatial_graph, load_lr_pairs, compute_communication
 from .scores import compute_node_scores, compute_edge_scores
 from .annotation import build_annotation_ldscores, build_per_pair_ldscores
@@ -49,7 +51,7 @@ def run(cfg: PipelineConfig, adata: ad.AnnData | None = None) -> dict:
     print("=" * 60)
 
     # -- Step 1: Load ST, build spatial graph -----------------------
-    print(f"\n[1/7] Loading ST data and building spatial graph...")
+    print("\n[1/7] Loading ST data and building spatial graph...")
     t0 = time.time()
     adata_input = adata  # keep reference for result write-back
     if adata is not None:
@@ -57,12 +59,17 @@ def run(cfg: PipelineConfig, adata: ad.AnnData | None = None) -> dict:
     else:
         adata_work = load_st(cfg.st_h5ad, cfg.spatial)
     coords = adata_work.obsm["spatial"].astype(np.float32)
+    X_work = ensure_csc_matrix(adata_work.X)
+    score_cfg = replace(
+        cfg.score,
+        gene_chunk_size=resolve_gene_chunk_size(adata_work.shape[0], cfg.score.gene_chunk_size),
+    )
 
     W, knn_idx, knn_valid = build_spatial_graph(
         coords,
         cfg.spatial.k_spatial,
         cfg.spatial.dis_thr,
-        kernel_bandwidth_frac=cfg.score.kernel_bandwidth_frac,
+        kernel_bandwidth_frac=score_cfg.kernel_bandwidth_frac,
     )
 
     n_filtered = int((~knn_valid[:, 1:]).sum())
@@ -72,25 +79,26 @@ def run(cfg: PipelineConfig, adata: ad.AnnData | None = None) -> dict:
     print(f"  {time.time() - t0:.1f}s")
 
     # -- Step 2: Spatial communication ---------------------------------
-    print(f"\n[2/7] Computing spatial communication for LR pairs...")
+    print("\n[2/7] Computing spatial communication for LR pairs...")
     t0 = time.time()
 
     pairs = load_lr_pairs(adata_work)
     genes = adata_work.var_names.tolist()
 
     comm, pair_names, pair_genes = compute_communication(
-        adata_work.X, W, pairs, genes,
+        X_work, W, pairs, genes,
     )
+    del W, coords
 
     print(f"  {len(pairs)} active LR pairs, {comm.shape[0]:,} cells")
     print(f"  {time.time() - t0:.1f}s")
 
     # -- Step 3: Edge scores (communication specificity) ------------
-    print(f"\n[3/7] Computing edge scores (communication specificity)...")
+    print("\n[3/7] Computing edge scores (communication specificity)...")
     t0 = time.time()
 
     edge_arr, lr_stats = compute_edge_scores(
-        comm, pair_names, pair_genes, genes, cfg.score,
+        comm, pair_names, pair_genes, genes, score_cfg,
     )
     del comm  # free communication matrix
 
@@ -99,12 +107,13 @@ def run(cfg: PipelineConfig, adata: ad.AnnData | None = None) -> dict:
     print(f"  {time.time() - t0:.1f}s")
 
     # -- Step 4: Node scores (expression specificity) ---------------
-    print(f"\n[4/7] Computing node scores (expression specificity)...")
+    print("\n[4/7] Computing node scores (expression specificity)...")
     t0 = time.time()
+    print(f"  Node score chunk size: {score_cfg.gene_chunk_size}")
 
     # Pass sparse X directly — compute_node_scores densifies per chunk
-    node_arr = compute_node_scores(adata_work.X, knn_idx, knn_valid, cfg.score)
-    del adata_work  # free working copy
+    node_arr = compute_node_scores(X_work, knn_idx, knn_valid, score_cfg)
+    del X_work, knn_idx, knn_valid, adata_work
 
     node_scores = pd.Series(node_arr, index=genes)
     print(f"  {(node_arr > 0).sum()} genes with node signal")
@@ -116,9 +125,12 @@ def run(cfg: PipelineConfig, adata: ad.AnnData | None = None) -> dict:
     print(f"  Node-Edge Spearman rho: {rho:.3f}")
 
     # -- Step 5: Annotation LD scores --------------------------------
-    print(f"\n[5/7] Building annotation LD scores...")
+    print("\n[5/7] Building annotation LD scores...")
     t0 = time.time()
     annot_ld, annot_diag = build_annotation_ldscores(node_scores, edge_scores, rdir)
+    del node_arr, edge_arr
+    if adata_input is None:
+        del node_scores, edge_scores
     print(f"  {annot_diag['n_node_genes']} node genes, {annot_diag['n_edge_genes']} edge genes mapped")
     print(f"  Gene-level corr: {annot_diag['gene_corr']:.3f}, "
           f"SNP-level corr: {annot_diag['snp_corr']:.3f}")
@@ -127,17 +139,17 @@ def run(cfg: PipelineConfig, adata: ad.AnnData | None = None) -> dict:
     print(f"  {time.time() - t0:.1f}s")
 
     # -- Step 6: Load GWAS + baseline LD -----------------------------
-    print(f"\n[6/7] Loading GWAS and baseline LD scores...")
+    print("\n[6/7] Loading GWAS and baseline LD scores...")
     t0 = time.time()
     sumstats = load_sumstats(cfg.gwas_sumstats, cfg.regression)
-    baseline, M_total = load_baseline(rdir)
-    w_ld = load_regression_weights(rdir)
+    baseline, M_total = load_baseline(rdir, copy=False)
+    w_ld = load_regression_weights(rdir, copy=False)
     print(f"  GWAS: {len(sumstats):,} SNPs, N={sumstats['N'].iloc[0]:.0f}")
     print(f"  Baseline: {len(baseline):,} SNPs, M_5_50={M_total:.0f}")
     print(f"  {time.time() - t0:.1f}s")
 
     # -- Step 7: S-LDSC regression -----------------------------------
-    print(f"\n[7/7] Running S-LDSC regression...")
+    print("\n[7/7] Running S-LDSC regression...")
     t0 = time.time()
     results = run_sldsc(sumstats, baseline, annot_ld, w_ld, M_total, cfg.regression)
 
@@ -158,7 +170,7 @@ def run(cfg: PipelineConfig, adata: ad.AnnData | None = None) -> dict:
     per_pair_results = None
 
     if edge_sig and lr_stats:
-        print(f"\n[7b/7] Edge significant — running per-LR-pair conditional S-LDSC...")
+        print("\n[7b/7] Edge significant — running per-LR-pair conditional S-LDSC...")
         t0 = time.time()
 
         # Build per-pair LD scores using each pair's specificity score
@@ -188,8 +200,8 @@ def run(cfg: PipelineConfig, adata: ad.AnnData | None = None) -> dict:
     print(f"\n{'=' * 60}")
     if edge_sig:
         print(f"RESULT: Edge tau SIGNIFICANT (p={edge_p:.4e})")
-        print(f"  Cell-cell communication carries trait heritability")
-        print(f"  beyond what expression specificity explains.")
+        print("  Cell-cell communication carries trait heritability")
+        print("  beyond what expression specificity explains.")
     else:
         print(f"RESULT: Edge tau not significant (p={edge_p:.4e})")
     print(f"Total time: {total_time:.1f}s")
@@ -202,8 +214,10 @@ def run(cfg: PipelineConfig, adata: ad.AnnData | None = None) -> dict:
         "params": {
             "k_spatial": cfg.spatial.k_spatial,
             "dis_thr": cfg.spatial.dis_thr,
-            "edge_agg_percentile": cfg.score.edge_agg_percentile,
-            "kernel_bandwidth_frac": cfg.score.kernel_bandwidth_frac,
+            "edge_agg_percentile": score_cfg.edge_agg_percentile,
+            "kernel_bandwidth_frac": score_cfg.kernel_bandwidth_frac,
+            "gene_chunk_size_requested": cfg.score.gene_chunk_size,
+            "gene_chunk_size_resolved": score_cfg.gene_chunk_size,
         },
         "n_genes": len(genes),
         "n_lr_pairs_active": len(lr_stats),

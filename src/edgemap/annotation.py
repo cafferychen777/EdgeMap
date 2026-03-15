@@ -31,6 +31,16 @@ from .config import resolve_resource_dir
 _weight_cache: dict[str, tuple] = {}
 
 
+def _safe_corrcoef(x: np.ndarray, y: np.ndarray) -> float:
+    """Correlation helper that returns 0.0 for degenerate inputs."""
+    if len(x) < 3 or len(y) < 3:
+        return 0.0
+    if np.allclose(x, x[0]) or np.allclose(y, y[0]):
+        return 0.0
+    corr = float(np.corrcoef(x, y)[0, 1])
+    return corr if np.isfinite(corr) else 0.0
+
+
 def _get_snp_gene_weights(
     resource_dir: str | Path | None = None,
 ) -> tuple[sparse.spmatrix, list[str], list[str]]:
@@ -84,10 +94,7 @@ def build_annotation_ldscores(
 
     # Diagnostic: gene-level correlation between the two scores
     both_active = (node_vec > 0) & (edge_vec > 0)
-    corr_gene = (
-        float(np.corrcoef(node_vec[both_active], edge_vec[both_active])[0, 1])
-        if both_active.sum() > 2 else 0.0
-    )
+    corr_gene = _safe_corrcoef(node_vec[both_active], edge_vec[both_active])
 
     # Sparse matrix-vector product: O(nnz) instead of O(M * G)
     ell_node = np.asarray(W @ node_vec).flatten()
@@ -95,10 +102,7 @@ def build_annotation_ldscores(
 
     # SNP-level correlation (diagnostic for checking independence)
     both_snp = (ell_node > 0) & (ell_edge > 0)
-    corr_snp = (
-        float(np.corrcoef(ell_node[both_snp], ell_edge[both_snp])[0, 1])
-        if both_snp.sum() > 2 else 0.0
-    )
+    corr_snp = _safe_corrcoef(ell_node[both_snp], ell_edge[both_snp])
 
     annot_ld = pd.DataFrame({
         "SNP": snp_names,

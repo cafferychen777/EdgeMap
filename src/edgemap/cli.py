@@ -2,7 +2,7 @@
 
 import argparse
 
-from .config import PipelineConfig, SpatialConfig, RegressionConfig
+from .config import PipelineConfig, SpatialConfig, ScoreConfig, RegressionConfig
 from .pipeline import run
 
 
@@ -29,6 +29,9 @@ def main():
                         help="Distance threshold for spatial graph (default: 3000)")
     parser.add_argument("--n-blocks", type=int, default=200,
                         help="Number of jackknife blocks (default: 200)")
+    parser.add_argument("--gene-chunk-size", type=int, default=None,
+                        help="Genes per node-score chunk "
+                             "(default: auto-scale by cell count)")
     parser.add_argument("--preprocessed", action="store_true",
                         help="Skip normalization (data already log1p-normalized)")
 
@@ -45,6 +48,7 @@ def main():
             dis_thr=args.dis_thr,
             preprocessed=args.preprocessed,
         ),
+        score=ScoreConfig(gene_chunk_size=args.gene_chunk_size),
         regression=RegressionConfig(n_blocks=args.n_blocks),
     )
 

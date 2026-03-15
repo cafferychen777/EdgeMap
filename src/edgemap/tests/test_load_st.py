@@ -95,3 +95,15 @@ def test_load_st_raises_without_spatial(tmp_path):
     cfg = SpatialConfig(min_cells_per_gene=1)
     with pytest.raises(ValueError, match="spatial"):
         load_st(str(path), cfg)
+
+
+def test_load_st_raises_on_duplicate_gene_names(tmp_path):
+    X = np.array([[1, 2], [3, 4]], dtype=np.float32)
+    adata = _make_adata(X)
+    adata.var_names = ["G1", "G1"]
+    path = tmp_path / "dup_genes.h5ad"
+    adata.write(path)
+
+    cfg = SpatialConfig(preprocessed=True, min_cells_per_gene=1)
+    with pytest.raises(ValueError, match="must be unique"):
+        load_st(str(path), cfg)

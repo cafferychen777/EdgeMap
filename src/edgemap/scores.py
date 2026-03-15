@@ -20,7 +20,8 @@ import numpy as np
 from scipy import sparse
 from scipy.stats import rankdata
 
-from .config import ScoreConfig
+from ._matrix import ensure_csc_matrix
+from .config import ScoreConfig, resolve_gene_chunk_size
 
 
 def compute_node_scores(
@@ -54,7 +55,7 @@ def compute_node_scores(
     """
     n, g = X.shape
     k = knn_idx.shape[1]
-    chunk = cfg.gene_chunk_size
+    chunk = resolve_gene_chunk_size(n, cfg.gene_chunk_size)
     scores = np.empty(g, dtype=np.float32)
 
     # Per-cell count of valid neighbors for proper averaging
@@ -62,7 +63,7 @@ def compute_node_scores(
     n_valid = np.maximum(n_valid, 1.0)
 
     # Convert to CSC for efficient column slicing if sparse
-    X_work = X.tocsc() if sparse.issparse(X) else X
+    X_work = ensure_csc_matrix(X)
 
     for start in range(0, g, chunk):
         end = min(start + chunk, g)

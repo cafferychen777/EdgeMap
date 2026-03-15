@@ -116,3 +116,21 @@ def test_annotation_weights_are_cached_per_resource(monkeypatch):
     build_annotation_ldscores(node_scores, edge_scores, "/cache_test")
 
     assert calls["n"] == 1
+
+
+def test_build_annotation_ldscores_degenerate_correlations_return_zero(monkeypatch):
+    wm = ad.AnnData(X=np.eye(3, dtype=np.float64))
+    wm.obs_names = ["rs1", "rs2", "rs3"]
+    wm.var_names = ["G1", "G2", "G3"]
+
+    ann._weight_cache.clear()
+    monkeypatch.setattr("edgemap.annotation.resolve_resource_dir", lambda _: Path("/degenerate"))
+    monkeypatch.setattr("edgemap.annotation.ad.read_h5ad", lambda _: wm)
+
+    node_scores = pd.Series({"G1": 1.0, "G2": 1.0, "G3": 1.0})
+    edge_scores = pd.Series({"G1": 2.0, "G2": 2.0, "G3": 2.0})
+
+    _, diag = build_annotation_ldscores(node_scores, edge_scores, "/degenerate")
+
+    assert diag["gene_corr"] == 0.0
+    assert diag["snp_corr"] == 0.0

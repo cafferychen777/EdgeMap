@@ -31,6 +31,8 @@ def test_cli_maps_all_args_to_pipeline_config(monkeypatch):
             "1234.5",
             "--n-blocks",
             "77",
+            "--gene-chunk-size",
+            "333",
             "--preprocessed",
         ],
     )
@@ -47,6 +49,7 @@ def test_cli_maps_all_args_to_pipeline_config(monkeypatch):
     assert cfg.spatial.k_spatial == 9
     assert cfg.spatial.dis_thr == 1234.5
     assert cfg.spatial.preprocessed is True
+    assert cfg.score.gene_chunk_size == 333
     assert cfg.regression.n_blocks == 77
 
 
@@ -80,4 +83,5 @@ def test_cli_uses_defaults_for_optional_args(monkeypatch):
     assert cfg.spatial.k_spatial == 6
     assert cfg.spatial.dis_thr == 3000.0
     assert cfg.spatial.preprocessed is False
+    assert cfg.score.gene_chunk_size is None
     assert cfg.regression.n_blocks == 200

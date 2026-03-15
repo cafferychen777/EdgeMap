@@ -32,7 +32,6 @@ def _make_comm(pair_data: dict[str, np.ndarray], genes: list[str]):
 
 def test_spatially_concentrated_pair_gets_high_score():
     """When communication is concentrated in a few cells, score > 1."""
-    n = 10
     # Concentrated: two cells with high comm, rest zero
     pair_comm = np.array([10, 10, 0, 0, 0, 0, 0, 0, 0, 0], dtype=float)
 
@@ -63,9 +62,11 @@ def test_shared_subunit_uses_max_not_sum():
     genes = ["ITGA1", "ITGA2", "ITGB1"]
 
     # Pair 1: ITGA1-ITGB1, strongly concentrated
-    c1 = np.zeros(n); c1[0] = 20.0
+    c1 = np.zeros(n)
+    c1[0] = 20.0
     # Pair 2: ITGA2-ITGB1, weakly concentrated
-    c2 = np.ones(n); c2[0] = 4.0
+    c2 = np.ones(n)
+    c2[0] = 4.0
 
     comm, names, pgenes = _make_comm(
         {"ITGA1-ITGB1": c1, "ITGA2-ITGB1": c2}, genes,
@@ -80,7 +81,8 @@ def test_shared_subunit_uses_max_not_sum():
 def test_heteromeric_pair_propagates_to_all_subunits():
     """Heteromeric ligand like INHBA_INHBB propagates score to all subunits."""
     n = 10
-    pair_comm = np.zeros(n); pair_comm[0] = 20.0
+    pair_comm = np.zeros(n)
+    pair_comm[0] = 20.0
     genes = ["INHBA", "INHBB", "ACVR1B"]
 
     comm, names, pgenes = _make_comm({"INHBA_INHBB-ACVR1B": pair_comm}, genes)

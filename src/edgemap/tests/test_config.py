@@ -2,7 +2,11 @@ from pathlib import Path
 
 import pytest
 
-from edgemap.config import get_lr_database, resolve_resource_dir
+from edgemap.config import (
+    get_lr_database,
+    resolve_gene_chunk_size,
+    resolve_resource_dir,
+)
 
 
 def test_resolve_resource_dir_uses_override(tmp_path):
@@ -54,3 +58,20 @@ def test_get_lr_database_points_to_existing_csv():
     path = get_lr_database()
     assert str(path).endswith("liana_consensus.csv")
     assert Path(path).exists()
+
+
+def test_resolve_gene_chunk_size_uses_explicit_value():
+    assert resolve_gene_chunk_size(10_000, 321) == 321
+
+
+def test_resolve_gene_chunk_size_auto_scales_and_clamps():
+    assert resolve_gene_chunk_size(5_000, None) == 2000
+    assert resolve_gene_chunk_size(20_000, None) == 838
+    assert resolve_gene_chunk_size(1_000_000, None) == 16
+
+
+def test_resolve_gene_chunk_size_rejects_invalid_values():
+    with pytest.raises(ValueError, match="n_cells must be > 0"):
+        resolve_gene_chunk_size(0, None)
+    with pytest.raises(ValueError, match="gene_chunk_size must be > 0"):
+        resolve_gene_chunk_size(10, 0)

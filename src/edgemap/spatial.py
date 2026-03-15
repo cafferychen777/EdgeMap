@@ -22,6 +22,7 @@ import scanpy as sc
 from scipy import sparse
 from sklearn.neighbors import NearestNeighbors
 
+from ._matrix import ensure_csc_matrix
 from .config import SpatialConfig, get_lr_database
 
 
@@ -59,6 +60,12 @@ def preprocess_st(adata: ad.AnnData, cfg: SpatialConfig) -> ad.AnnData:
     """
     if "spatial" not in adata.obsm:
         raise ValueError("h5ad must contain .obsm['spatial']")
+    if not adata.var_names.is_unique:
+        raise ValueError(
+            "Gene names (.var_names) must be unique. EdgeMap uses gene symbols "
+            "as keys for ligand-receptor matching and SNP-gene mapping; "
+            "aggregate duplicate genes upstream before running."
+        )
 
     sc.pp.filter_genes(adata, min_cells=cfg.min_cells_per_gene)
 
@@ -231,7 +238,7 @@ def compute_communication(
     gene_to_idx = {g: i for i, g in enumerate(gene_names)}
 
     # Convert to CSC for efficient column slicing (same as compute_node_scores)
-    X_work = X.tocsc() if sparse.issparse(X) else X
+    X_work = ensure_csc_matrix(X)
 
     # Pre-extract all needed gene columns to natural scale (expm1).
     # Many pairs share genes (e.g. ITGB1 in 50+ pairs), so caching

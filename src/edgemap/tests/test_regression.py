@@ -6,6 +6,8 @@ from pathlib import Path
 
 from edgemap.config import RegressionConfig
 from edgemap.regression import (
+    _baseline_cache,
+    _regression_weight_cache,
     _block_jackknife,
     _sldsc_weights,
     load_baseline,
@@ -68,6 +70,20 @@ def test_load_sumstats_missing_columns_raises(tmp_path):
         load_sumstats(str(path), RegressionConfig())
 
 
+def test_load_sumstats_filters_invalid_sample_size(tmp_path):
+    path = tmp_path / "bad_n.tsv"
+    pd.DataFrame(
+        {
+            "SNP": ["rs1", "rs2", "rs3"],
+            "Z": [2.0, 1.5, 1.2],
+            "N": [1000, np.inf, -5],
+        }
+    ).to_csv(path, sep="\t", index=False)
+
+    out = load_sumstats(str(path), RegressionConfig())
+    assert list(out["SNP"]) == ["rs1"]
+
+
 def test_block_jackknife_handles_singular_matrix():
     # Collinear columns force XtX singular; function should fall back to lstsq.
     Xw = np.array(
@@ -85,6 +101,19 @@ def test_block_jackknife_handles_singular_matrix():
     assert se.shape == (2,)
     assert np.all(np.isfinite(beta))
     assert np.all(np.isfinite(se))
+
+
+def test_block_jackknife_rejects_nonpositive_blocks():
+    Xw = np.array([[1.0, 2.0], [3.0, 4.0]])
+    yw = np.array([1.0, 2.0])
+
+    with pytest.raises(ValueError, match="n_blocks must be > 0"):
+        _block_jackknife(Xw, yw, n_blocks=0)
+
+
+def test_regression_config_rejects_nonpositive_blocks():
+    with pytest.raises(ValueError, match="n_blocks must be > 0"):
+        RegressionConfig(n_blocks=0)
 
 
 def test_run_sldsc_returns_expected_structure():
@@ -127,6 +156,7 @@ def test_run_per_pair_ldsc_skips_zero_and_applies_bonferroni():
 
 
 def test_load_baseline_casts_float16_and_accumulates_M(monkeypatch):
+    _baseline_cache.clear()
     monkeypatch.setattr("edgemap.regression.resolve_resource_dir", lambda _: Path("/fake"))
 
     def fake_read_feather(_):
@@ -149,6 +179,7 @@ def test_load_baseline_casts_float16_and_accumulates_M(monkeypatch):
 
 
 def test_load_regression_weights_concatenates_all_chromosomes(monkeypatch):
+    _regression_weight_cache.clear()
     monkeypatch.setattr("edgemap.regression.resolve_resource_dir", lambda _: Path("/fake"))
 
     def fake_read_csv(path, **kwargs):
@@ -162,6 +193,84 @@ def test_load_regression_weights_concatenates_all_chromosomes(monkeypatch):
     assert set(weights.columns) == {"SNP", "L2"}
     assert weights["SNP"].iloc[0] == "rs1"
     assert weights["SNP"].iloc[-1] == "rs22"
+
+
+def test_load_baseline_uses_cache(monkeypatch):
+    _baseline_cache.clear()
+    monkeypatch.setattr("edgemap.regression.resolve_resource_dir", lambda _: Path("/fake"))
+
+    calls = {"feather": 0, "open": 0}
+
+    def fake_read_feather(_):
+        calls["feather"] += 1
+        return pd.DataFrame({"SNP": ["rs1"], "base1": [1.0]})
+
+    def fake_open(*args, **kwargs):
+        calls["open"] += 1
+        return io.StringIO("1")
+
+    monkeypatch.setattr("edgemap.regression.pd.read_feather", fake_read_feather)
+    monkeypatch.setattr("builtins.open", fake_open)
+
+    first = load_baseline("/fake", copy=False)
+    second = load_baseline("/fake", copy=False)
+
+    assert calls == {"feather": 22, "open": 22}
+    assert first[0] is second[0]
+    assert first[1] == second[1]
+
+
+def test_load_regression_weights_uses_cache(monkeypatch):
+    _regression_weight_cache.clear()
+    monkeypatch.setattr("edgemap.regression.resolve_resource_dir", lambda _: Path("/fake"))
+
+    calls = {"csv": 0}
+
+    def fake_read_csv(path, **kwargs):
+        calls["csv"] += 1
+        chrom = int(str(path).split("weights.")[1].split(".")[0])
+        return pd.DataFrame({"SNP": [f"rs{chrom}"], "L2": [float(chrom)]})
+
+    monkeypatch.setattr("edgemap.regression.pd.read_csv", fake_read_csv)
+
+    first = load_regression_weights("/fake", copy=False)
+    second = load_regression_weights("/fake", copy=False)
+
+    assert calls == {"csv": 22}
+    assert first is second
+
+
+def test_load_baseline_returns_defensive_copy_by_default(monkeypatch):
+    _baseline_cache.clear()
+    monkeypatch.setattr("edgemap.regression.resolve_resource_dir", lambda _: Path("/fake"))
+    monkeypatch.setattr(
+        "edgemap.regression.pd.read_feather",
+        lambda _: pd.DataFrame({"SNP": ["rs1"], "base1": [1.0]}),
+    )
+    monkeypatch.setattr("builtins.open", lambda *args, **kwargs: io.StringIO("1"))
+
+    first, _ = load_baseline("/fake")
+    second, _ = load_baseline("/fake")
+    first.loc[0, "base1"] = 99.0
+
+    assert first is not second
+    assert second.loc[0, "base1"] == 1.0
+
+
+def test_load_regression_weights_returns_defensive_copy_by_default(monkeypatch):
+    _regression_weight_cache.clear()
+    monkeypatch.setattr("edgemap.regression.resolve_resource_dir", lambda _: Path("/fake"))
+    monkeypatch.setattr(
+        "edgemap.regression.pd.read_csv",
+        lambda path, **kwargs: pd.DataFrame({"SNP": [str(path)], "L2": [1.0]}),
+    )
+
+    first = load_regression_weights("/fake")
+    second = load_regression_weights("/fake")
+    first.loc[0, "L2"] = 99.0
+
+    assert first is not second
+    assert second.loc[0, "L2"] == 1.0
 
 
 def test_run_per_pair_ldsc_aligns_to_snp_index_and_sorts_by_z(monkeypatch):

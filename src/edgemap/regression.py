@@ -23,11 +23,19 @@ from scipy.stats import norm
 from .config import RegressionConfig, resolve_resource_dir
 
 
-def load_baseline(
+_baseline_cache: dict[str, tuple[pd.DataFrame, float]] = {}
+_regression_weight_cache: dict[str, pd.DataFrame] = {}
+
+
+def _get_cached_baseline(
     resource_dir: str | Path | None = None,
 ) -> tuple[pd.DataFrame, float]:
-    """Load pre-computed baseline LD scores and total M_5_50."""
+    """Load and cache pre-computed baseline LD scores."""
     rdir = resolve_resource_dir(resource_dir)
+    key = str(rdir)
+    if key in _baseline_cache:
+        return _baseline_cache[key]
+
     baseline_dir = rdir / "quick_mode" / "baseline"
 
     frames = []
@@ -39,14 +47,35 @@ def load_baseline(
         frames.append(bl)
         with open(baseline_dir / f"baseline.{chrom}.l2.M_5_50") as f:
             M_total += sum(float(x) for x in f.read().strip().split())
-    return pd.concat(frames, ignore_index=True), M_total
+    result = (pd.concat(frames, ignore_index=True), M_total)
+    _baseline_cache[key] = result
+    return result
 
 
-def load_regression_weights(
+def load_baseline(
+    resource_dir: str | Path | None = None,
+    *,
+    copy: bool = True,
+) -> tuple[pd.DataFrame, float]:
+    """Load pre-computed baseline LD scores and total M_5_50.
+
+    By default returns a defensive copy so external callers cannot mutate the
+    module-level cache. Internal performance-sensitive callers can request
+    ``copy=False`` to reuse the cached DataFrame directly.
+    """
+    baseline, m_total = _get_cached_baseline(resource_dir)
+    return (baseline.copy(deep=True), m_total) if copy else (baseline, m_total)
+
+
+def _get_cached_regression_weights(
     resource_dir: str | Path | None = None,
 ) -> pd.DataFrame:
-    """Load LD-based regression weights (w_ld)."""
+    """Load and cache LD-based regression weights (w_ld)."""
     rdir = resolve_resource_dir(resource_dir)
+    key = str(rdir)
+    if key in _regression_weight_cache:
+        return _regression_weight_cache[key]
+
     weight_dir = rdir / "LDSC_resource" / "weights_hm3_no_hla"
 
     frames = []
@@ -56,7 +85,24 @@ def load_regression_weights(
             sep="\t", compression="gzip",
         )
         frames.append(w)
-    return pd.concat(frames, ignore_index=True)
+    result = pd.concat(frames, ignore_index=True)
+    _regression_weight_cache[key] = result
+    return result
+
+
+def load_regression_weights(
+    resource_dir: str | Path | None = None,
+    *,
+    copy: bool = True,
+) -> pd.DataFrame:
+    """Load LD-based regression weights (w_ld).
+
+    By default returns a defensive copy so external callers cannot mutate the
+    module-level cache. Internal performance-sensitive callers can request
+    ``copy=False`` to reuse the cached DataFrame directly.
+    """
+    weights = _get_cached_regression_weights(resource_dir)
+    return weights.copy(deep=True) if copy else weights
 
 
 def load_sumstats(path: str, cfg: RegressionConfig) -> pd.DataFrame:
@@ -71,9 +117,13 @@ def load_sumstats(path: str, cfg: RegressionConfig) -> pd.DataFrame:
         raise ValueError(f"Sumstats missing columns: {missing}. Found: {list(ss.columns)}")
 
     ss = ss.dropna(subset=["Z", "N"])
-    ss = ss[np.isfinite(ss["Z"])]
+    ss = ss[np.isfinite(ss["Z"]) & np.isfinite(ss["N"]) & (ss["N"] > 0)]
+    if len(ss) == 0:
+        raise ValueError("No valid SNPs remain after filtering invalid Z/N values.")
     chisq_max = max(cfg.chisq_max_factor * ss["N"].max(), cfg.chisq_max_floor)
     ss = ss[ss["Z"] ** 2 < chisq_max]
+    if len(ss) == 0:
+        raise ValueError("No valid SNPs remain after chi-squared filtering.")
     return ss[["SNP", "Z", "N"]].drop_duplicates("SNP")
 
 
@@ -106,6 +156,8 @@ def _block_jackknife(
     Uses np.array_split for even block distribution when n is not
     divisible by n_blocks.
     """
+    if n_blocks <= 0:
+        raise ValueError("n_blocks must be > 0")
     n, p = Xw.shape
     n_blocks = min(n_blocks, n)
 

@@ -1,7 +1,7 @@
 import numpy as np
 from scipy import sparse
 
-from edgemap.config import ScoreConfig
+from edgemap.config import ScoreConfig, resolve_gene_chunk_size
 from edgemap.scores import compute_node_scores
 
 
@@ -88,3 +88,16 @@ def test_chunking_does_not_affect_result():
     scores_small = compute_node_scores(X, idx, valid, cfg_small)
 
     np.testing.assert_allclose(scores_large, scores_small, rtol=1e-5)
+
+
+def test_auto_chunk_matches_resolved_explicit_chunk():
+    """Auto chunk resolution must be numerically identical to explicit chunking."""
+    n, g = 20_000, 12
+    X = np.random.RandomState(101).rand(n, g).astype(np.float32)
+    idx, valid = _simple_knn(n, k=2)
+
+    auto_chunk = resolve_gene_chunk_size(n, None)
+    scores_auto = compute_node_scores(X, idx, valid, ScoreConfig())
+    scores_explicit = compute_node_scores(X, idx, valid, ScoreConfig(gene_chunk_size=auto_chunk))
+
+    np.testing.assert_allclose(scores_auto, scores_explicit, rtol=1e-5)
