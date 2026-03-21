@@ -179,9 +179,8 @@ Generated only when edge is significant. Each row is one LR pair tested conditio
 |--------|---------|
 | `pair` | LR pair label (e.g. `VEGFA-FLT1`) |
 | `tau / se / z` | Pair-specific heritability coefficient |
-| `p_bonferroni` | Bonferroni-corrected p-value |
 
-Pairs with significant `p_bonferroni` are the specific intercellular channels through which trait heritability flows.
+**Important:** The `z` column is a **ranking score**, not a calibrated test statistic. Per-pair annotations are extremely sparse, causing block-jackknife standard errors to deviate from their asymptotic distribution. Use `z` to identify the top-contributing LR pairs, but do not derive p-values from it via a normal approximation. Formal per-pair significance testing requires empirical null calibration (see paper Methods). An analytical calibration solution is under development and will be released in a future version.
 
 ### `lr_pair_stats.json`
 

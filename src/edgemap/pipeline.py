@@ -190,8 +190,11 @@ def run(cfg: PipelineConfig, adata: ad.AnnData | None = None) -> dict:
                 sumstats, baseline, annot_ld_node, pair_ld, snp_names_pair,
                 w_ld, M_total, cfg.regression,
             )
-            n_sig = (per_pair_results["p_bonferroni"] < 0.05).sum() if len(per_pair_results) > 0 else 0
-            print(f"  Tested {len(pair_ld)} pairs, {n_sig} significant after Bonferroni")
+            n_tested = len(per_pair_results) if per_pair_results is not None else 0
+            print(f"  Tested {len(pair_ld)} pairs, ranked by z-score")
+            if n_tested > 0:
+                top = per_pair_results.iloc[0]
+                print(f"  Top pair: {top['pair']} (z={top['z']:.2f})")
             print(f"  {time.time() - t0:.1f}s")
 
     # -- Verdict -----------------------------------------------------
@@ -235,7 +238,6 @@ def run(cfg: PipelineConfig, adata: ad.AnnData | None = None) -> dict:
     if per_pair_results is not None and len(per_pair_results) > 0:
         per_pair_results.to_csv(out / "per_pair_sldsc.csv", index=False)
         output["n_pairs_tested"] = len(per_pair_results)
-        output["n_pairs_significant"] = int((per_pair_results["p_bonferroni"] < 0.05).sum())
 
     # Write results.json AFTER all fields are populated
     with open(out / "results.json", "w") as f:

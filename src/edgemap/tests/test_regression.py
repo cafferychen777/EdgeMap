@@ -150,9 +150,8 @@ def test_run_per_pair_ldsc_skips_zero_and_applies_bonferroni():
     )
 
     assert list(out["pair"]) == ["pair_active"]
-    assert "p_bonferroni" in out.columns
-    # Bonferroni multiplier uses total tested dict length (including zero pair)
-    assert np.isclose(out.iloc[0]["p_bonferroni"], min(out.iloc[0]["p_onesided"] * 2.0, 1.0))
+    assert set(out.columns) == {"pair", "tau", "se", "z"}
+    assert np.isfinite(out.iloc[0]["z"])
 
 
 def test_load_baseline_casts_float16_and_accumulates_M(monkeypatch):

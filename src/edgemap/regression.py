@@ -273,6 +273,15 @@ def run_per_pair_ldsc(
     Conditions on baseline + node annotation, testing one pair at a time.
     This identifies which specific LR pairs drive the aggregate edge signal.
 
+    NOTE: The z-scores are valid for **ranking** pairs by signal strength
+    (Spearman ρ ≈ 0.97 vs empirically calibrated rankings) but NOT for
+    significance testing.  Per-pair annotations are extremely sparse
+    (~1–10 genes → ~1k/1M nonzero SNPs), causing block-jackknife SEs
+    to be unstable (empirical null SD ≈ 4 vs the assumed 1).  Formal
+    significance requires empirical null calibration (see paper Methods).
+    An analytical calibration solution is under development and will be
+    released in a future version.
+
     Args:
         sumstats: GWAS summary stats (SNP, Z, N)
         baseline: baseline LD score DataFrame
@@ -284,8 +293,8 @@ def run_per_pair_ldsc(
         cfg: regression config
 
     Returns:
-        DataFrame with columns [pair, tau, se, z, p_onesided, p_bonferroni]
-        sorted by z descending.
+        DataFrame with columns [pair, tau, se, z] sorted by z descending.
+        Use z for ranking only; see NOTE above.
     """
     # Merge base data once
     df_base = (
@@ -356,14 +365,10 @@ def run_per_pair_ldsc(
         results.append({
             "pair": pname,
             "tau": tau, "se": se, "z": z,
-            "p_onesided": float(norm.sf(z)),
         })
 
     df_results = pd.DataFrame(results)
     if len(df_results) > 0:
-        df_results["p_bonferroni"] = np.minimum(
-            df_results["p_onesided"] * n_pairs, 1.0
-        )
         df_results = df_results.sort_values("z", ascending=False).reset_index(drop=True)
 
     return df_results

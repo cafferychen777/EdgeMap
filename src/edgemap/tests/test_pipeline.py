@@ -130,8 +130,6 @@ def test_pipeline_results_json_includes_per_pair_fields(monkeypatch, tmp_path):
                 "tau": [0.2],
                 "se": [0.05],
                 "z": [4.0],
-                "p_onesided": [3e-5],
-                "p_bonferroni": [3e-5],
             }
         ),
     )
@@ -148,7 +146,7 @@ def test_pipeline_results_json_includes_per_pair_fields(monkeypatch, tmp_path):
 
     assert output["edge_significant"] is True
     assert output["n_pairs_tested"] == 1
-    assert output["n_pairs_significant"] == 1
+    assert "n_pairs_significant" not in output
     assert output["params"]["gene_chunk_size_requested"] is None
     assert output["params"]["gene_chunk_size_resolved"] == 2000
 
@@ -158,7 +156,7 @@ def test_pipeline_results_json_includes_per_pair_fields(monkeypatch, tmp_path):
         saved = json.load(f)
 
     assert saved["n_pairs_tested"] == 1
-    assert saved["n_pairs_significant"] == 1
+    assert "n_pairs_significant" not in saved
     assert saved["params"]["gene_chunk_size_requested"] is None
     assert saved["params"]["gene_chunk_size_resolved"] == 2000
     assert (out_dir / "per_pair_sldsc.csv").exists()
