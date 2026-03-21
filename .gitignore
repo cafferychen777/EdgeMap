@@ -3,6 +3,7 @@
 
 # Python package — the only public-facing code
 !.gitignore
+!LICENSE
 !README.md
 !pyproject.toml
 !src/

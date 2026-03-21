@@ -96,6 +96,11 @@ class ScoreConfig:
     edge_agg_percentile: float = 95.0
     kernel_bandwidth_frac: float = 1.0 / 3.0
     gene_chunk_size: int | None = None
+    edge_agg_method: str = "max"  # "max" or "mean"
+
+    def __post_init__(self) -> None:
+        if self.edge_agg_method not in ("max", "mean"):
+            raise ValueError(f"edge_agg_method must be 'max' or 'mean', got '{self.edge_agg_method}'")
 
 
 @dataclass

@@ -8,12 +8,13 @@ Both scores follow the same design principle:
   2. Aggregate to a single gene-level score.
 
 Node: per-spot expression specificity → max over cells.
-Edge: per-LR-pair communication specificity → max over pairs per gene.
+Edge: per-LR-pair communication specificity → max (default) or mean over pairs per gene.
 
 The edge score computes specificity per LR pair first, then assigns each
-gene the score of its strongest pair. This avoids shared-subunit inflation
-(e.g. ITGB1 in 50+ pairs) and follows the consensus of CCC tools (CellChat,
-CellPhoneDB): never aggregate LR pair scores by summing at gene level.
+gene the score of its strongest pair (max, default) or the mean across all
+active pairs (mean, for sensitivity analysis). Max avoids shared-subunit
+inflation (e.g. ITGB1 in 50+ pairs) and follows the consensus of CCC tools
+(CellChat, CellPhoneDB): never aggregate LR pair scores by summing at gene level.
 """
 
 import numpy as np
@@ -106,9 +107,10 @@ def compute_edge_scores(
     Algorithm:
       1. For each LR pair, specificity(cell) = comm(cell) / mean(comm).
       2. pair_score = P-th percentile of specificity across cells.
-      3. gene_score = max(pair_score) over all pairs the gene participates in.
+      3. gene_score = agg(pair_score) over all pairs the gene participates in,
+         where agg is max (default) or mean (cfg.edge_agg_method).
 
-    This avoids shared-subunit inflation: a gene appearing in 50 pairs gets
+    Max avoids shared-subunit inflation: a gene appearing in 50 pairs gets
     the score of its strongest pair, not 50x accumulated signal.
 
     Args:
@@ -129,7 +131,9 @@ def compute_edge_scores(
         return np.zeros(n_genes, dtype=np.float64), {}
 
     scores = np.zeros(n_genes, dtype=np.float64)
+    gene_counts = np.zeros(n_genes, dtype=np.int32)  # for mean aggregation
     lr_stats = {}
+    use_mean = cfg.edge_agg_method == "mean"
 
     for pi, pname in enumerate(pair_names):
         ligs, recs = pair_genes[pname]
@@ -152,10 +156,18 @@ def compute_edge_scores(
         if pair_score <= 1.0:
             continue
 
-        # Propagate to all participating genes via max
+        # Propagate to all participating genes
         for g in ligs + recs:
             gi = name2i[g]
-            if pair_score > scores[gi]:
-                scores[gi] = pair_score
+            if use_mean:
+                scores[gi] += pair_score
+                gene_counts[gi] += 1
+            else:
+                if pair_score > scores[gi]:
+                    scores[gi] = pair_score
+
+    if use_mean:
+        mask = gene_counts > 0
+        scores[mask] /= gene_counts[mask]
 
     return scores, lr_stats

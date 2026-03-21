@@ -142,7 +142,7 @@ def load_lr_pairs(
     """Load LIANA Consensus LR pairs and filter to those active in this dataset.
 
     Uses the LIANA Consensus resource (4,624 curated LR pairs from the union
-    of CellChatDB, CellPhoneDB, connectomeDB2020, Ramilowski2015, and others,
+    of CellChatDB, CellPhoneDB, ICELLNET, connectomeDB2020, and CellTalkDB,
     filtered by literature support and protein localization).
 
     An LR pair is active when every subunit gene is expressed in at least

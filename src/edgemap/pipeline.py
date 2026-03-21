@@ -215,6 +215,7 @@ def run(cfg: PipelineConfig, adata: ad.AnnData | None = None) -> dict:
             "k_spatial": cfg.spatial.k_spatial,
             "dis_thr": cfg.spatial.dis_thr,
             "edge_agg_percentile": score_cfg.edge_agg_percentile,
+            "edge_agg_method": score_cfg.edge_agg_method,
             "kernel_bandwidth_frac": score_cfg.kernel_bandwidth_frac,
             "gene_chunk_size_requested": cfg.score.gene_chunk_size,
             "gene_chunk_size_resolved": score_cfg.gene_chunk_size,
