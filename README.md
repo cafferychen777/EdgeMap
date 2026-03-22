@@ -2,7 +2,7 @@
 
 **Edge-centric heritability mapping via spatial cell–cell communication**
 
-EdgeMap decomposes trait heritability into cell-intrinsic (node) and cell–cell communication (edge) components using spatial transcriptomics and GWAS summary statistics. When the edge component is significant, it identifies which ligand–receptor pairs carry the signal.
+EdgeMap decomposes trait heritability into cell-intrinsic (**node**) and cell–cell communication (**edge**) components using spatial transcriptomics and GWAS summary statistics. The metaphor comes from a spatial graph: each cell is a node, and each cell–cell interface is an edge. When the edge component is significant, EdgeMap ranks which ligand–receptor (LR) pairs carry the signal.
 
 Existing methods (S-LDSC, scDRS, gsMap) map genetic risk to individual cells but treat each cell as an independent unit. EdgeMap tests a complementary hypothesis: **do genetic effects also concentrate at molecular interfaces between cells?**
 
@@ -10,11 +10,13 @@ Existing methods (S-LDSC, scDRS, gsMap) map genetic risk to individual cells but
 
 ## How it works
 
-1. **Spatial communication** — Gaussian-weighted spatial graph + mass-action LR communication per cell per pair
-2. **Node & edge scores** — Per-gene expression specificity (node) and communication specificity (edge) as local-vs-global enrichment
-3. **SNP annotation** — Gene scores → SNP LD scores via gsMap's pre-computed SNP–gene weight matrix
-4. **S-LDSC regression** — Joint regression yielding τ coefficients and p-values for node and edge heritability
-5. **Per-pair resolution** — Conditional testing of individual LR pairs to pinpoint the channels driving edge signal
+1. **Spatial communication** — Build a Gaussian-weighted spatial neighbor graph (k=6) and compute LR communication intensity per cell for each LR pair (mass-action kinetics with a bottleneck model for multi-subunit complexes)
+2. **Node & edge scores** — Quantify per-gene expression specificity (node: where is this gene most spatially concentrated?) and communication specificity (edge: where is this LR pair's signaling most spatially concentrated?)
+3. **SNP annotation** — Map gene-level scores to SNP-level LD scores via gsMap's pre-computed SNP–gene weight matrix
+4. **S-LDSC regression** — Joint regression of GWAS chi-squared statistics on baseline + node + edge annotations, yielding tau coefficients and p-values for node and edge heritability enrichment
+5. **Per-pair ranking** — Conditional S-LDSC of individual LR pairs (each against baseline + node) to rank the specific channels driving the aggregate edge signal
+
+A typical run completes in **~30 seconds** per trait–tissue combination (including per-pair ranking).
 
 ## Installation
 
@@ -24,7 +26,7 @@ cd EdgeMap
 pip install -e .
 ```
 
-Dependencies (numpy, scipy, scanpy, scikit-learn, anndata) are installed automatically. Requires Python ≥ 3.10.
+Dependencies (numpy, scipy, pandas, scanpy, scikit-learn, anndata) are installed automatically. Requires Python >= 3.10.
 
 ## Input preparation
 
@@ -40,10 +42,10 @@ import scanpy as sc
 adata = sc.read_visium("/path/to/spaceranger/outs")
 ```
 
-**From other platforms** (Slide-seq, MERFISH, STARmap, etc.): create an AnnData with your expression matrix and store coordinates as `adata.obsm["spatial"]` (shape `n_cells × 2`).
+**From other platforms** (Slide-seq, MERFISH, STARmap, etc.): create an AnnData with your expression matrix and store coordinates as `adata.obsm["spatial"]` (shape `n_cells x 2`).
 
 Requirements:
-- **Raw counts** — EdgeMap applies its own normalization. If your data is already log1p-normalized, set `preprocessed` (see [Parameters](#parameters)).
+- **Raw counts** — EdgeMap applies its own normalization. If your data is already log1p-normalized, set `--preprocessed` (see [Parameters](#parameters)).
 - **Human gene symbols** — the bundled LR database ([LIANA Consensus](https://github.com/saezlab/liana), 4,624 pairs) uses human symbols. For non-human data, convert gene names to human orthologs first.
 - For CLI usage, save to `.h5ad` first: `adata.write("my_tissue.h5ad")`
 
@@ -137,24 +139,17 @@ results = edgemap.run(edgemap.PipelineConfig(
 
 ### Parameters
 
-| CLI | Python | Default | When to change |
-|-----|--------|---------|----------------|
-| `--k-spatial` | `spatial.k_spatial` | 6 | Increase for denser tissues (e.g. 10 for brain cortex), decrease for sparser layouts |
-| `--dis-thr` | `spatial.dis_thr` | 3000 | Distance threshold in **coordinate units** (same as `.obsm["spatial"]`). For Visium pixel coordinates, 3000 ≈ 15 spot diameters. Adjust for other platforms or unit systems |
+| CLI | Python | Default | Description |
+|-----|--------|---------|-------------|
+| `--st` | `st_h5ad` | *(required)* | Path to spatial transcriptomics h5ad file |
+| `--gwas` | `gwas_sumstats` | *(required)* | Path to munged GWAS summary statistics |
+| `--gwas-label` | `gwas_label` | *(required)* | Human-readable trait name (used in output labels) |
+| `--output` | `output_dir` | `results` | Output directory |
+| `--resource-dir` | `resource_dir` | auto-detect | gsMap resource directory |
+| `--k-spatial` | `spatial.k_spatial` | 6 | Spatial neighbors. Increase for denser tissues (e.g. 10 for brain cortex) |
+| `--dis-thr` | `spatial.dis_thr` | 3000 | Distance threshold in coordinate units (same as `.obsm["spatial"]`). For Visium pixel coordinates, 3000 ~ 15 spot diameters |
 | `--n-blocks` | `regression.n_blocks` | 200 | Jackknife blocks for standard errors. Rarely needs changing |
-| `--preprocessed` | `spatial.preprocessed` | off | Set if data is already log1p-normalized to skip normalization |
-
-Python parameter example:
-
-```python
-edgemap.run(edgemap.PipelineConfig(
-    gwas_sumstats="munged_trait.sumstats.gz",
-    gwas_label="Systolic blood pressure",
-    output_dir="results/sbp_heart",
-    spatial=edgemap.SpatialConfig(k_spatial=10, dis_thr=5000),
-    regression=edgemap.RegressionConfig(n_blocks=100),
-), adata=adata)
-```
+| `--preprocessed` | `spatial.preprocessed` | off | Skip normalization if data is already log1p-normalized |
 
 ## Output
 
@@ -162,29 +157,41 @@ All files are written to `--output` (`output_dir` in Python):
 
 ### `results.json`
 
+The primary output. Key fields:
+
 | Field | Meaning |
 |-------|---------|
-| `regression.ell_node.tau / .z / .p_onesided` | Node (expression specificity) heritability enrichment |
-| `regression.ell_edge.tau / .z / .p_onesided` | Edge (communication specificity) heritability enrichment |
+| `regression.ell_node` | Node (expression specificity) heritability enrichment: `.tau` (effect size), `.z` (z-score), `.p_onesided` (p-value) |
+| `regression.ell_edge` | Edge (communication specificity) heritability enrichment: `.tau`, `.z`, `.p_onesided` |
 | `edge_significant` | `true` if edge p < 0.05 |
-| `node_edge_spearman` | Correlation between node and edge scores (low = complementary signals) |
+| `node_edge_spearman` | Spearman correlation between node and edge scores (low value = complementary signals) |
 
-**Interpretation:** A significant edge τ means trait-associated variants are enriched near genes whose spatial communication patterns are concentrated — the trait's genetic architecture acts through intercellular signaling, beyond what cell-intrinsic expression explains.
+The `ell_` prefix refers to the LD score annotation (ℓ) in the S-LDSC framework.
+
+**Interpretation:** A significant edge tau means trait-associated variants are enriched near genes whose spatial communication patterns are concentrated — the trait's genetic architecture acts through intercellular signaling, beyond what cell-intrinsic expression explains.
 
 ### `per_pair_sldsc.csv`
 
-Generated only when edge is significant. Each row is one LR pair tested conditionally against baseline + node:
+Generated only when edge is significant. Each row is one LR pair, tested conditionally against baseline + node:
 
 | Column | Meaning |
 |--------|---------|
 | `pair` | LR pair label (e.g. `VEGFA-FLT1`) |
-| `tau / se / z` | Pair-specific heritability coefficient |
+| `tau` | Pair-specific heritability coefficient |
+| `se` | Block-jackknife standard error |
+| `z` | Ranking score (`tau / se`) |
 
-**Important:** The `z` column is a **ranking score**, not a calibrated test statistic. Per-pair annotations are extremely sparse, causing block-jackknife standard errors to deviate from their asymptotic distribution. Use `z` to identify the top-contributing LR pairs, but do not derive p-values from it via a normal approximation. Formal per-pair significance testing requires empirical null calibration (see paper Methods). An analytical calibration solution is under development and will be released in a future version.
+**Important:** The `z` column is a **ranking score**, not a calibrated test statistic. Per-pair annotations are extremely sparse (~1–10 genes per pair), causing block-jackknife standard errors to deviate from their asymptotic distribution. Use `z` to identify the top-contributing LR pairs, but do not derive p-values from it via a normal approximation. Formal per-pair significance testing requires empirical null calibration (see paper Methods). An analytical calibration solution is under development and will be released in a future version.
 
 ### `lr_pair_stats.json`
 
-Per-LR-pair communication diagnostics: mean intensity, active cell count, and spatial specificity score for all tested pairs.
+Per-LR-pair communication diagnostics for all active pairs (not just those tested in S-LDSC):
+
+| Field | Meaning |
+|-------|---------|
+| `mean_comm` | Mean communication intensity across all cells |
+| `n_active_cells` | Number of cells with nonzero communication |
+| `pair_score` | Spatial specificity score (95th percentile of normalized communication; values > 1 indicate spatial concentration) |
 
 ## Troubleshooting
 
@@ -193,7 +200,13 @@ Per-LR-pair communication diagnostics: mean intensity, active cell count, and sp
 | `h5ad must contain .obsm['spatial']` | Ensure spatial coordinates exist in your h5ad |
 | `Expression values look pre-processed` | Provide raw counts, or add `--preprocessed` |
 | `gsMap resource directory not found` | Set `EDGEMAP_RESOURCE_DIR` or pass `--resource-dir` |
-| No `per_pair_sldsc.csv` in output | Expected — edge was not significant (p ≥ 0.05) |
+| No `per_pair_sldsc.csv` in output | Expected — edge was not significant (p >= 0.05) |
+
+## Citation
+
+If you use EdgeMap, please cite:
+
+> Yang C, Zhang X, Chen J. Intercellular communication is a heritable dimension of human tissue architecture. *Nature Genetics* (2026).
 
 ## License
 
