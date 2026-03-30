@@ -1,11 +1,15 @@
 # Everything ignored by default
 *
 
-# Python package — the only public-facing code
+# Public-facing package and release metadata
 !.gitignore
 !LICENSE
 !README.md
+!CHANGELOG.md
+!CITATION.cff
 !pyproject.toml
+!.github/
+!.github/release.yml
 !src/
 !src/edgemap/
 !src/edgemap/**

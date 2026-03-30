@@ -1,0 +1,34 @@
+cff-version: 1.2.0
+message: "If you use EdgeMap, please cite the software and the accompanying manuscript metadata below."
+title: "EdgeMap"
+version: "0.1.0"
+license: "MIT"
+repository-code: "https://github.com/cafferychen777/EdgeMap"
+url: "https://github.com/cafferychen777/EdgeMap"
+authors:
+  - family-names: "Yang"
+    given-names: "Chen"
+    email: "cafferychen777@tamu.edu"
+  - family-names: "Zhang"
+    given-names: "Xianyang"
+    email: "zhangxiany@stat.tamu.edu"
+  - family-names: "Chen"
+    given-names: "Jun"
+    email: "Chen.Jun2@mayo.edu"
+abstract: >-
+  Python package for partitioning GWAS heritability into cell-intrinsic
+  (node) and cell-cell communication (edge) components from spatial
+  transcriptomics, with ligand-receptor pair ranking when aggregate edge
+  signal is detected.
+preferred-citation:
+  type: article
+  title: "Intercellular communication is a heritable dimension of human tissue architecture"
+  authors:
+    - family-names: "Yang"
+      given-names: "Chen"
+    - family-names: "Zhang"
+      given-names: "Xianyang"
+    - family-names: "Chen"
+      given-names: "Jun"
+  year: 2026
+  note: "Manuscript"
