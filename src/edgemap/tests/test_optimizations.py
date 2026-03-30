@@ -7,6 +7,7 @@ to ensure the optimizations are purely mechanical (no precision loss).
 import numpy as np
 from scipy import sparse
 
+from edgemap._matrix import ensure_csc_matrix
 from edgemap.config import ScoreConfig
 from edgemap.scores import compute_node_scores
 from edgemap.spatial import (
@@ -168,3 +169,11 @@ def test_batched_perpair_ld_matches_sequential():
     finally:
         ann._weight_cache.clear()
         ann._weight_cache.update(original_cache)
+
+
+
+def test_ensure_csc_matrix_reuses_existing_csc_input():
+    """CSC input should be returned unchanged to avoid unnecessary copies."""
+    X = sparse.csc_matrix(np.array([[1.0, 0.0], [0.0, 1.0]]))
+    out = ensure_csc_matrix(X)
+    assert out is X

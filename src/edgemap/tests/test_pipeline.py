@@ -6,6 +6,7 @@ import weakref
 import anndata as ad
 import numpy as np
 import pandas as pd
+import pytest
 from scipy import sparse
 
 from edgemap.config import PipelineConfig
@@ -112,6 +113,20 @@ def _patch_pipeline_common(monkeypatch, adata: ad.AnnData, edge_p: float) -> Non
             "M_total": 1_000_000.0,
         },
     )
+
+
+def test_pipeline_raises_without_input_source(tmp_path):
+    """The top-level contract requires either st_h5ad or an in-memory AnnData."""
+    cfg = PipelineConfig(
+        gwas_sumstats="fake_sumstats.tsv",
+        gwas_label="fake_trait",
+        output_dir=str(tmp_path / "out_missing_input"),
+        resource_dir="/fake_resource",
+    )
+
+    with pytest.raises(ValueError, match="Provide either st_h5ad in config or pass adata directly"):
+        run(cfg)
+
 
 
 def test_pipeline_results_json_includes_per_pair_fields(monkeypatch, tmp_path):

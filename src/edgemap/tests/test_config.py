@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from edgemap.config import (
+    ScoreConfig,
     get_lr_database,
     resolve_gene_chunk_size,
     resolve_resource_dir,
@@ -75,3 +76,8 @@ def test_resolve_gene_chunk_size_rejects_invalid_values():
         resolve_gene_chunk_size(0, None)
     with pytest.raises(ValueError, match="gene_chunk_size must be > 0"):
         resolve_gene_chunk_size(10, 0)
+
+
+def test_score_config_rejects_invalid_edge_agg_method():
+    with pytest.raises(ValueError, match="edge_agg_method must be 'max' or 'mean'"):
+        ScoreConfig(edge_agg_method="bad")

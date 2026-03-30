@@ -113,3 +113,37 @@ def test_zero_communication_pair_skipped():
 
     np.testing.assert_array_equal(scores, [0.0, 0.0])
     assert "LIG-REC" not in stats  # skipped because mean <= 0
+
+
+
+def test_mean_edge_aggregation_averages_only_spatially_concentrated_pairs():
+    """Mean aggregation should average retained pair scores rather than sum them."""
+    n = 20
+    concentrated_a = np.zeros(n)
+    concentrated_a[0] = 20.0
+    concentrated_b = np.zeros(n)
+    concentrated_b[:2] = 10.0
+    uniform = np.ones(n)
+
+    comm, names, pgenes = _make_comm(
+        {
+            "G1-G2": concentrated_a,
+            "G1-G3": concentrated_b,
+            "G1-G4": uniform,
+        },
+        ["G1", "G2", "G3", "G4"],
+    )
+
+    scores, stats = compute_edge_scores(
+        comm,
+        names,
+        pgenes,
+        ["G1", "G2", "G3", "G4"],
+        ScoreConfig(edge_agg_method="mean"),
+    )
+
+    expected_mean = (stats["G1-G2"]["pair_score"] + stats["G1-G3"]["pair_score"]) / 2
+    assert np.isclose(scores[0], expected_mean)
+    assert np.isclose(scores[1], stats["G1-G2"]["pair_score"])
+    assert np.isclose(scores[2], stats["G1-G3"]["pair_score"])
+    assert scores[3] == 0.0
