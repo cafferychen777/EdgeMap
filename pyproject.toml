@@ -6,11 +6,13 @@ build-backend = "hatchling.build"
 name = "edgemap"
 version = "0.1.0"
 description = "Edge-centric heritability mapping via spatial cell-cell communication"
+readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 dependencies = [
     "numpy>=1.24",
     "pandas>=2.0",
+    "pyarrow>=12.0",
     "scipy>=1.10",
     "anndata>=0.9",
     "scanpy>=1.9",
