@@ -31,4 +31,23 @@ preferred-citation:
     - family-names: "Chen"
       given-names: "Jun"
   year: 2026
-  note: "Manuscript"
+  journal: "bioRxiv"
+  publisher: "Cold Spring Harbor Laboratory"
+  doi: "10.64898/2026.03.29.715138"
+  url: "https://www.biorxiv.org/content/early/2026/03/31/2026.03.29.715138"
+  abstract: >-
+    Methods that map genetic risk to cells identify disease-relevant tissues and
+    cell types but cannot test whether genetic effects concentrate at molecular
+    interfaces between cells. Here we introduce EdgeMap, which integrates spatial
+    transcriptomics with GWAS summary statistics to partition trait heritability
+    into cell-intrinsic and intercellular components and to resolve the
+    intercellular signal into specific ligand-receptor channels. Across 17 traits
+    and five human tissues, edge heritability is enriched in biologically
+    coherent trait-tissue pairings (3.8-fold; P = 4.4 x 10^-6) and replicates
+    across independent tissue sections, GWAS cohorts, and cell-segmented Visium
+    HD. Per-pair decomposition identifies 67 trait-specific channels (FDR <
+    0.10) organized into convergent pathway families - neurexin-neuroligin
+    synaptic signaling in bipolar disorder, vascular adhesion in cardiovascular
+    traits, and lipoprotein-clearance pathways in liver. Most edge genes are
+    absent from standard gene-level prioritization, supporting intercellular
+    communication as a complementary dimension of genetic architecture.

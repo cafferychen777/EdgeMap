@@ -219,9 +219,9 @@ This public repository is intentionally the **Python package surface** of EdgeMa
 
 ## Citation
 
-If you use EdgeMap, please cite the accompanying manuscript:
+If you use EdgeMap, please cite:
 
-> Yang C, Zhang X, Chen J. *Intercellular communication is a heritable dimension of human tissue architecture.*
+> Yang C, Zhang X, Chen J. *Intercellular communication is a heritable dimension of human tissue architecture.* bioRxiv. 2026. doi: 10.64898/2026.03.29.715138.
 
 ## License
 
