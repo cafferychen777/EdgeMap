@@ -89,8 +89,12 @@ def compute_node_scores(
             local += contrib
         local /= n_valid
 
-        # Specificity = exp(local - global), take max over cells
-        scores[start:end] = np.exp(local - global_mean[np.newaxis, :]).max(axis=0)
+        # Specificity = exp(local - global), aggregate over cells
+        spec = np.exp(local - global_mean[np.newaxis, :])
+        if cfg.node_agg_percentile >= 100.0:
+            scores[start:end] = spec.max(axis=0)
+        else:
+            scores[start:end] = np.percentile(spec, cfg.node_agg_percentile, axis=0)
 
     return scores
 

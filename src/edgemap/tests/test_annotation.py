@@ -5,7 +5,11 @@ from pathlib import Path
 from scipy import sparse
 
 import edgemap.annotation as ann
-from edgemap.annotation import build_annotation_ldscores, build_per_pair_ldscores
+from edgemap.annotation import (
+    build_annotation_ldscores,
+    build_multi_annotation_ldscores,
+    build_per_pair_ldscores,
+)
 
 
 def test_build_annotation_ldscores_aligns_genes_and_computes_diagnostics(monkeypatch):
@@ -134,3 +138,35 @@ def test_build_annotation_ldscores_degenerate_correlations_return_zero(monkeypat
 
     assert diag["gene_corr"] == 0.0
     assert diag["snp_corr"] == 0.0
+
+
+def test_build_multi_annotation_ldscores_returns_all_columns_and_pairwise(monkeypatch):
+    wm = ad.AnnData(
+        X=np.array(
+            [
+                [1.0, 0.0, 0.5],
+                [0.0, 1.0, 0.5],
+            ],
+            dtype=np.float64,
+        )
+    )
+    wm.obs_names = ["rs1", "rs2"]
+    wm.var_names = ["G1", "G2", "G3"]
+
+    ann._weight_cache.clear()
+    monkeypatch.setattr("edgemap.annotation.resolve_resource_dir", lambda _: Path("/multi"))
+    monkeypatch.setattr("edgemap.annotation.ad.read_h5ad", lambda _: wm)
+
+    annot_ld, diag = build_multi_annotation_ldscores(
+        {
+            "node": pd.Series({"G1": 2.0, "G2": 1.0}),
+            "edge": pd.Series({"G2": 3.0}),
+            "fib": pd.Series({"G3": 4.0}),
+        },
+        "/multi",
+    )
+
+    assert list(annot_ld.columns) == ["SNP", "ell_node", "ell_edge", "ell_fib"]
+    assert diag["annotations"]["fib"]["n_genes"] == 1
+    assert "node__edge" in diag["pairwise"]
+    assert "node__fib" in diag["pairwise"]

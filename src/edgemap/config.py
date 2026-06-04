@@ -94,6 +94,7 @@ class SpatialConfig:
 class ScoreConfig:
     """Parameters for node/edge score computation."""
     edge_agg_percentile: float = 95.0
+    node_agg_percentile: float = 100.0  # 100.0 = max (default); <100 for sensitivity
     kernel_bandwidth_frac: float = 1.0 / 3.0
     gene_chunk_size: int | None = None
     edge_agg_method: str = "max"  # "max" or "mean"
@@ -101,6 +102,8 @@ class ScoreConfig:
     def __post_init__(self) -> None:
         if self.edge_agg_method not in ("max", "mean"):
             raise ValueError(f"edge_agg_method must be 'max' or 'mean', got '{self.edge_agg_method}'")
+        if not (0 < self.node_agg_percentile <= 100):
+            raise ValueError(f"node_agg_percentile must be in (0, 100], got {self.node_agg_percentile}")
 
 
 @dataclass

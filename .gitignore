@@ -14,6 +14,14 @@
 !src/edgemap/
 !src/edgemap/**
 
+# Quickstart example
+!quickstart/
+!quickstart/README.md
+!quickstart/run_quickstart.py
+!quickstart/output/
+!quickstart/output/results.json
+!quickstart/output/lr_pair_stats.json
+
 # Exclude build/cache artifacts that land inside src/
 src/edgemap/**/__pycache__/
 src/edgemap/**/*.pyc

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "edgemap"
-version = "0.1.0"
+version = "0.2.0"
 description = "Edge-centric heritability mapping via spatial cell-cell communication"
 readme = "README.md"
 requires-python = ">=3.10"

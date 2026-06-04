@@ -1,0 +1,45 @@
+{
+  "gwas_label": "demo_trait",
+  "st_data": "/Users/apple/Research/EdgeMap/quickstart/output/demo_visium.h5ad",
+  "params": {
+    "k_spatial": 6,
+    "dis_thr": 300.0,
+    "edge_agg_percentile": 95.0,
+    "edge_agg_method": "max",
+    "kernel_bandwidth_frac": 0.3333333333333333,
+    "gene_chunk_size_requested": null,
+    "gene_chunk_size_resolved": 2000
+  },
+  "n_genes": 200,
+  "n_lr_pairs_active": 62,
+  "node_edge_spearman": 0.13487539426399925,
+  "annotation_diagnostics": {
+    "n_node_genes": 69,
+    "n_edge_genes": 69,
+    "n_both_genes": 69,
+    "gene_corr": 0.08898557695929622,
+    "snp_corr": 0.9992854567951187
+  },
+  "regression": {
+    "n_snps": 1183576,
+    "N_bar": 50000.0,
+    "M_total": 9755134.0,
+    "ell_node": {
+      "tau": -1.5720414480349405e-07,
+      "se": 9.767822095946651e-08,
+      "z": -1.6094083538717294,
+      "p_twosided": 0.10752707981412948,
+      "p_onesided": 0.9462364600929353
+    },
+    "ell_edge": {
+      "tau": 1.1668440569902442e-07,
+      "se": 7.268187519720583e-08,
+      "z": 1.605412702718906,
+      "p_twosided": 0.10840301073864295,
+      "p_onesided": 0.05420150536932147
+    },
+    "intercept": 1.1573586098087665
+  },
+  "edge_significant": false,
+  "total_time_s": 3.7
+}

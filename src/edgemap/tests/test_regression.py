@@ -14,7 +14,9 @@ from edgemap.regression import (
     load_regression_weights,
     load_sumstats,
     run_per_pair_ldsc,
+    run_per_pair_ldsc_custom,
     run_sldsc,
+    run_sldsc_custom,
 )
 
 
@@ -152,6 +154,48 @@ def test_run_per_pair_ldsc_skips_zero_and_applies_bonferroni():
     assert list(out["pair"]) == ["pair_active"]
     assert set(out.columns) == {"pair", "tau", "se", "z"}
     assert np.isfinite(out.iloc[0]["z"])
+
+
+def test_run_sldsc_custom_accepts_extra_annotations():
+    sumstats, baseline, annot_ld, w_ld = _toy_regression_inputs()
+    annot_extra = annot_ld.copy()
+    annot_extra["ell_fibro"] = [0.1, 0.0, 0.2, 0.1, 0.0]
+
+    out = run_sldsc_custom(
+        sumstats=sumstats,
+        baseline=baseline,
+        annot_ld=annot_extra,
+        w_ld=w_ld,
+        M_total=1_000_000.0,
+        cfg=RegressionConfig(n_blocks=3),
+        annot_cols=["ell_node", "ell_edge", "ell_fibro"],
+    )
+
+    assert "ell_fibro" in out
+    assert set(out["ell_fibro"]) == {"tau", "se", "z", "p_twosided", "p_onesided"}
+
+
+
+def test_run_per_pair_ldsc_custom_accepts_multiple_controls():
+    sumstats, baseline, annot_ld, w_ld = _toy_regression_inputs()
+    annot_controls = annot_ld[["SNP", "ell_node"]].copy()
+    annot_controls["ell_fibro"] = [0.1, 0.0, 0.2, 0.1, 0.0]
+    pair_ld = {"pair_active": np.array([0.2, 0.1, 0.4, 0.2, 0.3])}
+
+    out = run_per_pair_ldsc_custom(
+        sumstats=sumstats,
+        baseline=baseline,
+        annot_ld_controls=annot_controls,
+        pair_ld_scores=pair_ld,
+        snp_names=["rs1", "rs2", "rs3", "rs4", "rs5"],
+        w_ld=w_ld,
+        M_total=1_000_000.0,
+        cfg=RegressionConfig(n_blocks=3),
+        control_cols=["ell_node", "ell_fibro"],
+    )
+
+    assert list(out["pair"]) == ["pair_active"]
+    assert np.isfinite(out.iloc[0]["tau"])
 
 
 def test_load_baseline_casts_float16_and_accumulates_M(monkeypatch):

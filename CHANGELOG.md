@@ -4,6 +4,17 @@ This changelog tracks public package, CLI, API, and release-facing metadata chan
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-06-04
+
+### Added
+- `build_multi_annotation_ldscores()`: generalized annotation builder that accepts an arbitrary number of gene-level score vectors with pairwise diagnostic correlations.
+- `node_agg_percentile` config parameter for sensitivity analysis of node score aggregation (default 100.0 = max, matching v0.1 behavior).
+- Quickstart example (`quickstart/`) with synthetic data generator and end-to-end pipeline demo.
+
+### Changed
+- `build_annotation_ldscores()` now delegates to `build_multi_annotation_ldscores()` internally; the public API is unchanged.
+- Regression module refactored for clarity.
+
 ## [0.1.0] - 2026-03-30
 
 ### Added

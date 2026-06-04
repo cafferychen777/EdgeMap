@@ -191,24 +191,25 @@ def _block_jackknife(
     return beta_hat, se
 
 
-def run_sldsc(
+def run_sldsc_custom(
     sumstats: pd.DataFrame,
     baseline: pd.DataFrame,
     annot_ld: pd.DataFrame,
     w_ld: pd.DataFrame,
     M_total: float,
     cfg: RegressionConfig,
+    annot_cols: list[str] | None = None,
 ) -> dict:
-    """Run joint S-LDSC regression with node and edge annotations.
+    """Run joint S-LDSC regression with an arbitrary set of annotation columns."""
+    if annot_cols is None:
+        annot_cols = [c for c in annot_ld.columns if c != "SNP"]
+    if not annot_cols:
+        raise ValueError("annot_ld must provide at least one annotation column")
 
-    Merges all data on common SNPs, constructs design matrix,
-    computes heteroscedasticity + LD correction weights, runs WLS
-    with block jackknife standard errors.
-    """
     df = (
         sumstats
         .merge(baseline, on="SNP", how="inner")
-        .merge(annot_ld, on="SNP", how="inner")
+        .merge(annot_ld[["SNP"] + annot_cols], on="SNP", how="inner")
         .merge(w_ld[["SNP", "L2"]], on="SNP", how="inner")
         .rename(columns={"L2": "w_ld"})
     )
@@ -220,28 +221,22 @@ def run_sldsc(
     N = df["N"].values
     Nbar = N.mean()
 
-    # Annotation columns: baseline + node + edge
     baseline_cols = [c for c in baseline.columns if c != "SNP"]
-    annot_names = baseline_cols + ["ell_node", "ell_edge"]
-
-    # Design matrix: [N·ℓ_1, ..., N·ℓ_k, 1]
-    ell_arrays = [df[c].values.astype(np.float64) for c in annot_names]
+    all_annot = baseline_cols + annot_cols
+    ell_arrays = [df[c].values.astype(np.float64) for c in all_annot]
     X = np.column_stack([N * ell for ell in ell_arrays] + [np.ones(n_snps)])
 
-    # Regression weights: heteroscedasticity × LD overlap correction
     w_ld_vals = np.maximum(df["w_ld"].values, 1.0)
     w = _sldsc_weights(y, df[baseline_cols].values, w_ld_vals, Nbar, M_total)
 
-    # Weighted LS with block jackknife
     sqrtw = np.sqrt(w)
     Xw = X * sqrtw[:, None]
     yw = y * sqrtw
 
     beta_hat, jk_se = _block_jackknife(Xw, yw, cfg.n_blocks)
 
-    # Package results
     results = {"n_snps": n_snps, "N_bar": float(Nbar), "M_total": float(M_total)}
-    for i, name in enumerate(annot_names):
+    for i, name in enumerate(all_annot):
         tau = float(beta_hat[i])
         se = float(jk_se[i])
         z = tau / se if se > 1e-15 else 0.0
@@ -255,6 +250,107 @@ def run_sldsc(
     return results
 
 
+def run_sldsc(
+    sumstats: pd.DataFrame,
+    baseline: pd.DataFrame,
+    annot_ld: pd.DataFrame,
+    w_ld: pd.DataFrame,
+    M_total: float,
+    cfg: RegressionConfig,
+) -> dict:
+    """Run joint S-LDSC regression with node and edge annotations."""
+    return run_sldsc_custom(
+        sumstats, baseline, annot_ld, w_ld, M_total, cfg,
+        annot_cols=["ell_node", "ell_edge"],
+    )
+
+
+def run_per_pair_ldsc_custom(
+    sumstats: pd.DataFrame,
+    baseline: pd.DataFrame,
+    annot_ld_controls: pd.DataFrame,
+    pair_ld_scores: dict[str, np.ndarray],
+    snp_names: list[str],
+    w_ld: pd.DataFrame,
+    M_total: float,
+    cfg: RegressionConfig,
+    control_cols: list[str] | None = None,
+    pair_membership_ld_scores: dict[str, np.ndarray] | None = None,
+) -> pd.DataFrame:
+    """Per-LR-pair conditional S-LDSC with arbitrary control annotations."""
+    if control_cols is None:
+        control_cols = [c for c in annot_ld_controls.columns if c != "SNP"]
+    if not control_cols:
+        raise ValueError("annot_ld_controls must contain at least one control annotation")
+
+    df_base = (
+        sumstats
+        .merge(baseline, on="SNP", how="inner")
+        .merge(annot_ld_controls[["SNP"] + control_cols], on="SNP", how="inner")
+        .merge(w_ld[["SNP", "L2"]], on="SNP", how="inner")
+        .rename(columns={"L2": "w_ld"})
+    )
+
+    snp_to_idx = {s: i for i, s in enumerate(snp_names)}
+    df_snp_indices = df_base["SNP"].map(snp_to_idx)
+    valid = df_snp_indices.notna()
+    df_base = df_base[valid].copy()
+    snp_idx = df_snp_indices[valid].astype(int).values
+
+    n_snps = len(df_base)
+    if n_snps == 0:
+        raise ValueError("No SNPs remain after merging sumstats, baseline, control annotations, and weights.")
+
+    y = (df_base["Z"] ** 2).values
+    N = df_base["N"].values
+    Nbar = N.mean()
+
+    baseline_cols = [c for c in baseline.columns if c != "SNP"]
+    baseline_ld = df_base[baseline_cols].values.astype(np.float64)
+    control_arrays = [df_base[c].values.astype(np.float64) for c in control_cols]
+    w_ld_vals = np.maximum(df_base["w_ld"].values, 1.0)
+
+    w = _sldsc_weights(y, baseline_ld, w_ld_vals, Nbar, M_total)
+    sqrtw = np.sqrt(w)
+    yw = y * sqrtw
+
+    X_base = np.column_stack(
+        [N * baseline_ld[:, i] for i in range(baseline_ld.shape[1])]
+        + [N * arr for arr in control_arrays]
+        + [np.ones(n_snps)]
+    )
+
+    results = []
+    for pname, pair_ell_full in pair_ld_scores.items():
+        pair_ell = pair_ell_full[snp_idx]
+        if pair_ell.max() <= 0:
+            continue
+
+        # Build per-pair design matrix: baseline + controls [+ membership] + pair + intercept
+        extra_cols = []
+        if pair_membership_ld_scores is not None and pname in pair_membership_ld_scores:
+            membership_ell = pair_membership_ld_scores[pname][snp_idx]
+            extra_cols.append(N * membership_ell)
+
+        X = np.column_stack(
+            [X_base[:, :-1]]
+            + extra_cols
+            + [N * pair_ell, X_base[:, -1:]]
+        )
+        Xw = X * sqrtw[:, None]
+        beta_hat, jk_se = _block_jackknife(Xw, yw, cfg.n_blocks)
+
+        tau = float(beta_hat[-2])
+        se = float(jk_se[-2])
+        z = tau / se if se > 1e-15 else 0.0
+        results.append({"pair": pname, "tau": tau, "se": se, "z": z})
+
+    df_results = pd.DataFrame(results)
+    if len(df_results) > 0:
+        df_results = df_results.sort_values("z", ascending=False).reset_index(drop=True)
+    return df_results
+
+
 def run_per_pair_ldsc(
     sumstats: pd.DataFrame,
     baseline: pd.DataFrame,
@@ -265,110 +361,15 @@ def run_per_pair_ldsc(
     M_total: float,
     cfg: RegressionConfig,
 ) -> pd.DataFrame:
-    """Per-LR-pair conditional S-LDSC: test each pair individually.
-
-    For each pair p, the model is:
-        E[χ²] = 1 + N·Σ τ_q·ℓ^(q) + N·τ_node·ℓ_node + N·τ_p·ℓ_p
-
-    Conditions on baseline + node annotation, testing one pair at a time.
-    This identifies which specific LR pairs drive the aggregate edge signal.
-
-    NOTE: The z-scores are valid for **ranking** pairs by signal strength
-    (Spearman ρ ≈ 0.97 vs empirically calibrated rankings) but NOT for
-    significance testing.  Per-pair annotations are extremely sparse
-    (~1–10 genes → ~1k/1M nonzero SNPs), causing block-jackknife SEs
-    to be unstable (empirical null SD ≈ 4 vs the assumed 1).  Formal
-    significance requires empirical null calibration (see paper Methods).
-    An analytical calibration solution is under development and will be
-    released in a future version.
-
-    Args:
-        sumstats: GWAS summary stats (SNP, Z, N)
-        baseline: baseline LD score DataFrame
-        annot_ld_node: DataFrame with columns [SNP, ell_node]
-        pair_ld_scores: dict mapping pair_name -> (n_snps,) LD score array
-        snp_names: SNP names aligned with pair_ld_scores arrays
-        w_ld: regression weights DataFrame
-        M_total: total M for h² scaling
-        cfg: regression config
-
-    Returns:
-        DataFrame with columns [pair, tau, se, z] sorted by z descending.
-        Use z for ranking only; see NOTE above.
-    """
-    # Merge base data once
-    df_base = (
-        sumstats
-        .merge(baseline, on="SNP", how="inner")
-        .merge(annot_ld_node[["SNP", "ell_node"]], on="SNP", how="inner")
-        .merge(w_ld[["SNP", "L2"]], on="SNP", how="inner")
-        .rename(columns={"L2": "w_ld"})
+    """Per-LR-pair conditional S-LDSC: baseline + node + pair."""
+    return run_per_pair_ldsc_custom(
+        sumstats=sumstats,
+        baseline=baseline,
+        annot_ld_controls=annot_ld_node,
+        pair_ld_scores=pair_ld_scores,
+        snp_names=snp_names,
+        w_ld=w_ld,
+        M_total=M_total,
+        cfg=cfg,
+        control_cols=["ell_node"],
     )
-
-    # Build SNP index for fast lookup
-    snp_to_idx = {s: i for i, s in enumerate(snp_names)}
-    df_snp_indices = df_base["SNP"].map(snp_to_idx)
-    valid = df_snp_indices.notna()
-    df_base = df_base[valid].copy()
-    snp_idx = df_snp_indices[valid].astype(int).values
-
-    n_snps = len(df_base)
-    if n_snps == 0:
-        raise ValueError("No SNPs remain after merging sumstats, baseline, node annotations, and weights.")
-
-    y = (df_base["Z"] ** 2).values
-    N = df_base["N"].values
-    Nbar = N.mean()
-
-    baseline_cols = [c for c in baseline.columns if c != "SNP"]
-    ell_node = df_base["ell_node"].values.astype(np.float64)
-    baseline_ld = df_base[baseline_cols].values.astype(np.float64)
-    w_ld_vals = np.maximum(df_base["w_ld"].values, 1.0)
-
-    # Precompute weights and base design matrix (shared across all pairs)
-    w = _sldsc_weights(y, baseline_ld, w_ld_vals, Nbar, M_total)
-    sqrtw = np.sqrt(w)
-    yw = y * sqrtw
-
-    # Base design: [N*baseline, N*node, 1]  -- pair column appended per iteration
-    X_base = np.column_stack(
-        [N * baseline_ld[:, i] for i in range(baseline_ld.shape[1])]
-        + [N * ell_node, np.ones(n_snps)]
-    )
-
-    n_pairs = len(pair_ld_scores)
-    results = []
-
-    for pname, pair_ell_full in pair_ld_scores.items():
-        pair_ell = pair_ell_full[snp_idx]
-
-        # Skip pairs with no annotation signal
-        if pair_ell.max() <= 0:
-            continue
-
-        # Insert pair column before intercept
-        X = np.column_stack([
-            X_base[:, :-1],     # baseline + node
-            N * pair_ell,       # pair-specific edge
-            X_base[:, -1:],     # intercept
-        ])
-
-        Xw = X * sqrtw[:, None]
-
-        beta_hat, jk_se = _block_jackknife(Xw, yw, cfg.n_blocks)
-
-        # Pair coefficient is at index -2 (before intercept)
-        tau = float(beta_hat[-2])
-        se = float(jk_se[-2])
-        z = tau / se if se > 1e-15 else 0.0
-
-        results.append({
-            "pair": pname,
-            "tau": tau, "se": se, "z": z,
-        })
-
-    df_results = pd.DataFrame(results)
-    if len(df_results) > 0:
-        df_results = df_results.sort_values("z", ascending=False).reset_index(drop=True)
-
-    return df_results

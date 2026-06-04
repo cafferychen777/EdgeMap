@@ -1,0 +1,4 @@
+# Large generated data files (regenerate via run_quickstart.py)
+output/demo_gwas.tsv
+output/demo_visium.h5ad
+output/per_pair_sldsc.csv
