@@ -9,6 +9,7 @@ from edgemap.regression import (
     _baseline_cache,
     _regression_weight_cache,
     _block_jackknife,
+    _order_genomically,
     _sldsc_weights,
     load_baseline,
     load_regression_weights,
@@ -410,3 +411,57 @@ def test_sldsc_weights_matches_inline():
     expected = 1.0 / (2.0 * Ey**2 * w_ld_vals)
 
     np.testing.assert_allclose(w, expected, rtol=1e-15)
+
+
+def test_order_genomically_restores_baseline_order():
+    """The frame is sorted into the baseline's row order, whatever it arrives in."""
+    _, baseline, _, _ = _toy_regression_inputs()
+    scrambled = pd.DataFrame({"SNP": ["rs4", "rs1", "rs5", "rs3", "rs2"],
+                              "value": [4.0, 1.0, 5.0, 3.0, 2.0]})
+    ordered = _order_genomically(scrambled, baseline)
+    assert list(ordered["SNP"]) == list(baseline["SNP"])
+    assert list(ordered["value"]) == [1.0, 2.0, 3.0, 4.0, 5.0]
+    assert list(ordered.index) == list(range(5))
+
+
+def test_sldsc_is_invariant_to_the_order_the_frame_arrives_in():
+    """Row order must not reach the jackknife.
+
+    _block_jackknife blocks on runs of consecutive rows, so before the ordering
+    fix a frame built from scrambled summary statistics produced a different
+    standard error from the same data in genomic order. Both tau and se must
+    now agree.
+    """
+    sumstats, baseline, annot_ld, w_ld = _toy_regression_inputs()
+    cfg = RegressionConfig(n_blocks=5)
+    ordered = run_sldsc_custom(sumstats, baseline, annot_ld, w_ld, 1000.0, cfg)
+
+    perm = [3, 0, 4, 2, 1]
+    shuffled = run_sldsc_custom(
+        sumstats.iloc[perm].reset_index(drop=True),
+        baseline, annot_ld, w_ld, 1000.0, cfg,
+    )
+
+    for key in ("ell_node", "ell_edge"):
+        assert ordered[key]["tau"] == pytest.approx(shuffled[key]["tau"], rel=1e-12)
+        assert ordered[key]["se"] == pytest.approx(shuffled[key]["se"], rel=1e-12)
+
+
+def test_per_pair_is_invariant_to_the_order_the_frame_arrives_in():
+    sumstats, baseline, annot_ld, w_ld = _toy_regression_inputs()
+    cfg = RegressionConfig(n_blocks=5)
+    snp_names = list(baseline["SNP"])
+    pair_ld = {"A-B": np.array([0.5, 0.1, 0.2, 0.4, 0.3])}
+
+    def run(ss):
+        return run_per_pair_ldsc_custom(
+            sumstats=ss, baseline=baseline,
+            annot_ld_controls=annot_ld, pair_ld_scores=pair_ld,
+            snp_names=snp_names, w_ld=w_ld, M_total=1000.0, cfg=cfg,
+            control_cols=["ell_node"],
+        )
+
+    a = run(sumstats)
+    b = run(sumstats.iloc[[3, 0, 4, 2, 1]].reset_index(drop=True))
+    assert a.loc[0, "tau"] == pytest.approx(b.loc[0, "tau"], rel=1e-12)
+    assert a.loc[0, "se"] == pytest.approx(b.loc[0, "se"], rel=1e-12)

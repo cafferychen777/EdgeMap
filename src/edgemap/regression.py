@@ -144,10 +144,38 @@ def _sldsc_weights(
     return 1.0 / (2.0 * Ey**2 * w_ld_vals)
 
 
+def _order_genomically(df: pd.DataFrame, baseline: pd.DataFrame) -> pd.DataFrame:
+    """Sort the regression rows into genomic order.
+
+    _block_jackknife forms its blocks from runs of consecutive rows, so a block
+    is a contiguous genomic region only when the rows arrive sorted by position.
+    A frame merged onto the summary statistics inherits the munged file's row
+    order instead, and that order is not always genomic: of the nine GWAS used
+    here, four are position-sorted and five are not. When it is not, a block is
+    a random sample drawn from the whole genome rather than one region, and the
+    standard error can differ from the correct one by up to a factor of four.
+    The point estimate is unaffected either way.
+
+    The baseline annotation is written per chromosome in position order, so its
+    row index is the reference. SNPs absent from the baseline keep their
+    relative order and are placed last; in practice the frame is an inner join
+    on the baseline, so there are none.
+    """
+    order = pd.Series(np.arange(len(baseline)), index=baseline["SNP"])
+    pos = df["SNP"].map(order)
+    return (df.assign(_genomic_pos=pos)
+              .sort_values("_genomic_pos", kind="stable", na_position="last")
+              .drop(columns="_genomic_pos")
+              .reset_index(drop=True))
+
+
 def _block_jackknife(
     Xw: np.ndarray, yw: np.ndarray, n_blocks: int,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Fast block jackknife for weighted least squares.
+
+    Blocks are runs of consecutive rows, so the caller must hand over a frame
+    in genomic order; see _order_genomically.
 
     Precomputes X'X and X'y, then obtains each delete-one-block estimate
     by subtracting the block's contribution — O(p³) per block instead of
@@ -213,6 +241,7 @@ def run_sldsc_custom(
         .merge(w_ld[["SNP", "L2"]], on="SNP", how="inner")
         .rename(columns={"L2": "w_ld"})
     )
+    df = _order_genomically(df, baseline)
     n_snps = len(df)
     if n_snps == 0:
         raise ValueError("No SNPs remain after merging sumstats, baseline, annotations, and weights.")
@@ -290,6 +319,9 @@ def run_per_pair_ldsc_custom(
         .merge(w_ld[["SNP", "L2"]], on="SNP", how="inner")
         .rename(columns={"L2": "w_ld"})
     )
+    # Order before snp_idx is derived: the pair annotations are indexed through
+    # snp_idx, so the two must describe the same row order.
+    df_base = _order_genomically(df_base, baseline)
 
     snp_to_idx = {s: i for i, s in enumerate(snp_names)}
     df_snp_indices = df_base["SNP"].map(snp_to_idx)
