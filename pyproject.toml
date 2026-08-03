@@ -50,7 +50,14 @@ edgemap = "edgemap.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/edgemap"]
-exclude = ["src/edgemap/tests/"]
+exclude = [
+    "src/edgemap/tests/",
+    # These experimental modules are present in some development worktrees but
+    # are not part of the reviewed v0.2 publication API.
+    "src/edgemap/genetic_response.py",
+    "src/edgemap/response.py",
+    "src/edgemap/simulation.py",
+]
 
 [tool.hatch.build.targets.sdist]
 include = [
@@ -66,6 +73,12 @@ exclude = [
     "results",
     "paper",
     "scripts",
+    "quickstart",
+    "reproducibility",
+    "src/edgemap/tests",
+    "src/edgemap/genetic_response.py",
+    "src/edgemap/response.py",
+    "src/edgemap/simulation.py",
     ".playwright-mcp",
     ".coverage",
     ".pytest_cache",

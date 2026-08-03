@@ -1,6 +1,6 @@
 {
   "gwas_label": "demo_trait",
-  "st_data": "/Users/apple/Research/EdgeMap/quickstart/output/demo_visium.h5ad",
+  "st_data": "quickstart/output/demo_visium.h5ad",
   "params": {
     "k_spatial": 6,
     "dis_thr": 300.0,
@@ -41,5 +41,5 @@
     "intercept": 1.1573586098087665
   },
   "edge_significant": false,
-  "total_time_s": 3.7
+  "total_time_s": 3.4
 }

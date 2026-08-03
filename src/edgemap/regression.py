@@ -150,11 +150,12 @@ def _order_genomically(df: pd.DataFrame, baseline: pd.DataFrame) -> pd.DataFrame
     _block_jackknife forms its blocks from runs of consecutive rows, so a block
     is a contiguous genomic region only when the rows arrive sorted by position.
     A frame merged onto the summary statistics inherits the munged file's row
-    order instead, and that order is not always genomic: of the nine GWAS used
-    here, four are position-sorted and five are not. When it is not, a block is
-    a random sample drawn from the whole genome rather than one region, and the
-    standard error can differ from the correct one by up to a factor of four.
-    The point estimate is unaffected either way.
+    order instead, and that order is not always genomic. The ``Jackknife
+    Ordering`` sheet in Supplementary Table 5 documents the affected trait
+    frames in the current analysis; when the order is not genomic, a block is a
+    random sample drawn from the whole genome rather than one region. The point
+    estimate is unaffected either way, but the jackknife standard error and
+    z-score can change materially.
 
     The baseline annotation is written per chromosome in position order, so its
     row index is the reference. SNPs absent from the baseline keep their

@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """
-EdgeMap quickstart: full pipeline on synthetic data in <5 minutes.
+EdgeMap quickstart: core-pipeline smoke test on synthetic data.
 
 Generates a small synthetic Visium-like dataset (~500 spots, ~200 genes)
-and synthetic GWAS summary statistics, then runs the complete EdgeMap
-pipeline to demonstrate end-to-end functionality.
+and synthetic GWAS summary statistics, then runs the aggregate EdgeMap
+workflow to demonstrate installation and output schemas. It does not run the
+manuscript's separate empirical per-pair calibration, and the conditional
+per-pair branch is exercised only if the synthetic aggregate edge result passes
+its screening threshold.
 
 Usage:
     python quickstart/run_quickstart.py
@@ -202,7 +205,7 @@ def make_demo_gwas(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="EdgeMap quickstart: full pipeline on synthetic data",
+        description="EdgeMap quickstart: core-pipeline smoke test on synthetic data",
     )
     parser.add_argument(
         "--resource-dir", default=None,
@@ -222,12 +225,26 @@ def main():
     )
     args = parser.parse_args()
 
+    from edgemap.config import resolve_resource_dir
+
+    # Resolve the external statistical resources before generating any output.
+    # The demo cannot perform SNP annotation or S-LDSC without these files.
+    resource_dir = resolve_resource_dir(args.resource_dir)
+
     out_dir = Path(args.output)
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    # A previous run may have crossed the aggregate screen. Remove its optional
+    # conditional output so that this run's directory cannot misrepresent which
+    # branches were actually executed.
+    stale_per_pair = out_dir / "per_pair_sldsc.csv"
+    if stale_per_pair.exists():
+        stale_per_pair.unlink()
 
     print("=" * 60)
     print("EdgeMap Quickstart")
     print("=" * 60)
+    print(f"External gsMap resource: {resource_dir}")
 
     # -- Step A: Generate synthetic data -----------------------------------
     print("\n[A] Generating synthetic Visium dataset...")
@@ -241,7 +258,7 @@ def main():
 
     print("\n[B] Generating synthetic GWAS summary statistics...")
     t0 = time.time()
-    sumstats = make_demo_gwas(resource_dir=args.resource_dir, seed=args.seed + 1)
+    sumstats = make_demo_gwas(resource_dir=resource_dir, seed=args.seed + 1)
     gwas_path = out_dir / "demo_gwas.tsv"
     sumstats.to_csv(gwas_path, sep="\t", index=False)
     print(f"    {len(sumstats):,} SNPs, N=50,000")
@@ -257,7 +274,7 @@ def main():
         gwas_sumstats=str(gwas_path),
         gwas_label="demo_trait",
         output_dir=str(out_dir),
-        resource_dir=args.resource_dir,
+        resource_dir=str(resource_dir),
         spatial=SpatialConfig(
             k_spatial=6,
             dis_thr=300.0,  # smaller d_max for the 100-unit grid spacing
@@ -277,8 +294,16 @@ def main():
     print(f"  demo_gwas.tsv         Synthetic GWAS summary statistics")
     print(f"  results.json          Pipeline results (tau, z, p-values)")
     print(f"  lr_pair_stats.json    Per-LR-pair communication statistics")
-    if (out_dir / "per_pair_sldsc.csv").exists():
+    per_pair_output = out_dir / "per_pair_sldsc.csv"
+    if per_pair_output.exists():
         print(f"  per_pair_sldsc.csv    Per-pair conditional S-LDSC results")
+        print("\nThe aggregate screen was positive, so the conditional per-pair")
+        print("ranking branch ran. These z-scores are not empirically calibrated.")
+    else:
+        print("\nThe aggregate screen was not positive, so the conditional per-pair")
+        print("branch did not run for this synthetic example.")
+    print("The 50,000-replicate empirical calibration used for manuscript")
+    print("per-pair inference is outside the scope of this smoke test.")
 
     print("\n--- How to interpret results.json ---")
     print()
@@ -302,8 +327,8 @@ def main():
     print(f"  Intercept: {reg['intercept']:.4f}  (expect ~1.0; >>1 indicates confounding)")
     print()
     print("NOTE: This is synthetic data, so results are not biologically")
-    print("meaningful. The purpose is to verify that the pipeline runs")
-    print("correctly and to illustrate the output format.")
+    print("meaningful. The purpose is to exercise the aggregate path on one")
+    print("fixed synthetic input and to illustrate the output format.")
     print()
     print("For real analyses, replace demo_visium.h5ad with your spatial")
     print("transcriptomics data and demo_gwas.tsv with munged GWAS")

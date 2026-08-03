@@ -22,6 +22,16 @@
 !quickstart/output/results.json
 !quickstart/output/lr_pair_stats.json
 
+# Publication audit and reproducibility contract. This directory contains
+# documentation and manifests only; analysis code and frozen outputs are
+# admitted individually after the release checks described there pass.
+!reproducibility/
+!reproducibility/README.md
+!reproducibility/PUBLICATION_MANIFEST.csv
+!reproducibility/EXCLUSION_REGISTER.md
+!reproducibility/RELEASE_CHECKLIST.md
+!reproducibility/ED_FIGURE_AUDIT.md
+
 # Exclude build/cache artifacts that land inside src/
 src/edgemap/**/__pycache__/
 src/edgemap/**/*.pyc

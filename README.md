@@ -63,7 +63,10 @@ The output `munged_trait.sumstats.gz` can be passed directly to EdgeMap.
 
 ### 3. gsMap resource directory
 
-EdgeMap requires the pre-computed LD resources from [gsMap](https://github.com/LeonSong1995/gsMap):
+EdgeMap requires the pre-computed LD resources from
+[gsMap](https://github.com/LeonSong1995/gsMap). The upstream archive is
+approximately 621 MiB to download (650,877,553 bytes as checked on
+3 August 2026) and is not downloaded automatically:
 
 ```bash
 wget https://yanglab.westlake.edu.cn/data/gsMap/gsMap_resource.tar.gz
@@ -207,6 +210,16 @@ Communication diagnostics for all active LR pairs.
 ## Repository scope
 
 This public repository is intentionally the **Python package surface** of EdgeMap. Large resources, local analyses, manuscript assets, and figure-generation workflows are not part of the tracked public package tree.
+
+The publication reproducibility contract and artifact-level release audit are
+documented in [`reproducibility/`](reproducibility/README.md). The quickstart is
+an aggregate-workflow installation and output-schema smoke test. It requires
+the separately installed gsMap resource archive (approximately 621 MiB to
+download as checked on 3 August 2026), does not trigger the conditional
+per-pair branch with its fixed synthetic input, and does not run the
+50,000-replicate empirical calibration used for manuscript per-pair inference.
+A manuscript reproducibility archive must not be described as complete until
+every row of the publication manifest has passed its release gate.
 
 ## Troubleshooting
 

@@ -1,8 +1,14 @@
 # EdgeMap Quickstart
 
-Minimal reproducible example of the full EdgeMap pipeline.
-Generates synthetic spatial transcriptomics and GWAS data, then runs
-the complete analysis in under 5 minutes on a laptop.
+Minimal smoke test of the aggregate EdgeMap workflow. The script generates
+synthetic spatial transcriptomics and GWAS inputs, builds the node and edge
+annotations, and runs aggregate S-LDSC.
+
+This example requires the external gsMap resource bundle. It validates the
+installation, aggregate workflow, and output schemas; it does not reproduce the
+manuscript analyses or run the separate 50,000-replicate empirical per-pair
+calibration. With the maintained default seed, the aggregate screen is
+negative and the conditional per-pair branch is not triggered.
 
 ## Prerequisites
 
@@ -10,10 +16,13 @@ the complete analysis in under 5 minutes on a laptop.
 pip install edgemap
 ```
 
-EdgeMap also requires the **gsMap resource directory** (~400 MB), which
-contains pre-computed baseline LD scores, regression weights, and a
-SNP-gene weight matrix for HapMap3 SNPs. Point EdgeMap to this directory
-via one of:
+EdgeMap also requires the **external gsMap resource directory**. The upstream
+archive is approximately 621 MiB to download (650,877,553 bytes as checked on
+3 August 2026); extracted size depends on the release and filesystem. It
+contains pre-computed baseline LD scores, regression weights, and a SNP-gene
+weight matrix for HapMap3 SNPs. It is not bundled with EdgeMap or downloaded by
+the quickstart. Install it first as described in the repository README, then
+point EdgeMap to the extracted directory via one of:
 
 - Environment variable: `export EDGEMAP_RESOURCE_DIR=/path/to/gsMap_resource`
 - Command-line flag: `--resource-dir /path/to/gsMap_resource`
@@ -31,8 +40,10 @@ Or with explicit resource path:
 python quickstart/run_quickstart.py --resource-dir /path/to/gsMap_resource
 ```
 
-The script takes ~5 seconds on an Apple M1 laptop. All output is written
-to `quickstart/output/`.
+The maintained fixed-seed example takes approximately 4 seconds for the
+reported EdgeMap computation on our test machine after the resource directory
+is installed; dependency acquisition, Python startup, and file generation add
+machine-dependent overhead. All output is written to `quickstart/output/`.
 
 ## What the script does
 
@@ -44,7 +55,7 @@ to `quickstart/output/`.
 2. **Generates synthetic GWAS summary statistics** (~1.2M HapMap3 SNPs)
    with random Z-scores mimicking a moderately polygenic trait.
 
-3. **Runs the full EdgeMap pipeline**:
+3. **Runs the aggregate EdgeMap path**:
    - Loads ST data and builds a spatial KNN graph
    - Computes LR communication intensity across spatial neighborhoods
    - Computes node scores (expression specificity) and edge scores
@@ -95,13 +106,16 @@ expression specificity alone.
 **Interpretation for real data**: On real Visium + GWAS data, a significant
 edge tau (p < 0.05) indicates that intercellular communication in the
 profiled tissue carries unique trait heritability. When the edge is
-significant, EdgeMap additionally runs per-LR-pair conditional tests
-to identify which specific ligand-receptor pathways drive the signal.
+significant, EdgeMap additionally runs per-LR-pair conditional regressions.
+Those conditional z-scores rank candidate pairs but are not formal per-pair
+tests without empirical calibration.
 
 **Note**: The synthetic demo data uses random GWAS Z-scores, so the
-results are not biologically meaningful. The edge tau is borderline
-(p ~ 0.05) by chance, illustrating the output format without claiming
-any true biological signal.
+results are not biologically meaningful. With the fixed seed, the aggregate
+edge result does not cross the one-sided 0.05 screen
+(`edge_significant=false`), so the conditional per-pair branch is not run.
+This behavior is intentional: the example does not manufacture an association
+merely to trigger a downstream branch.
 
 ## Adapting to your own data
 
