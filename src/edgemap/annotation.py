@@ -11,11 +11,11 @@ LD-weighted cis-indicator.
 Multiplying W @ gene_scores gives annotation LD scores directly, combining
 gene-SNP mapping and LD computation in a single sparse matrix-vector product.
 
-No explicit orthogonalization is performed. The joint S-LDSC regression
-with both node and edge annotations handles confounding by the
-Frisch-Waugh-Lovell theorem: each tau coefficient already reflects the
-unique contribution of its annotation after controlling for all others,
-including all baseline annotations.
+No explicit orthogonalization is performed. In the joint S-LDSC regression,
+the Frisch-Waugh-Lovell theorem gives each tau coefficient its conditional
+interpretation given the other included annotations. The coefficient remains
+model- and annotation-set-dependent and should not be read as a uniquely
+attributable biological component, especially when annotations are correlated.
 """
 
 import numpy as np
@@ -151,26 +151,37 @@ def build_per_pair_ldscores(
     pair_scores: dict[str, float],
     resource_dir: str | Path | None = None,
 ) -> tuple[dict[str, np.ndarray], list[str]]:
-    """Build per-LR-pair SNP annotation LD scores for conditional testing.
+    """Build LR-context constituent-gene LD scores for conditional ranking.
 
-    For each pair p, constructs a gene-level score where only the participating
-    genes receive the pair's specificity score, then maps to SNP-level via W.
+    For each context p, all participating ligand and receptor genes receive the
+    same positive spatial specificity score before mapping to SNP level via W.
+    This preserves the historical output scale, but the score is only a scale
+    convention within a context:
+
+        ell_p = pair_score_p * ell_membership_p
+
+    Consequently, any conditional regression coefficient and its standard
+    error rescale inversely with a positive change in ``pair_score_p``, while
+    their ratio (z) is unchanged. Reversing ligand and receptor orientation is
+    also annotation-invariant. These annotations prioritize directionless,
+    LR-context-indexed constituent-gene sets; they do not identify the LR
+    relation, direction, interaction, or communication intensity.
 
     Args:
-        pair_names: list of pair labels
-        pair_genes: dict mapping label -> (lig_genes, rec_genes)
-        pair_scores: dict mapping label -> PairScore value
+        pair_names: List of LR context labels.
+        pair_genes: Mapping from label to (ligand genes, receptor genes).
+        pair_scores: Mapping from label to a positive spatial specificity score.
         resource_dir: gsMap resource directory (auto-detected if None)
 
     Returns:
-        pair_ld: dict mapping pair_name -> (n_snps,) LD score array
-        snp_names: SNP name list aligned with the arrays
+        pair_ld: Mapping from context label to an aligned SNP LD-score array.
+        snp_names: SNP names aligned with the arrays.
     """
     W, snp_names, wm_genes = _get_snp_gene_weights(resource_dir)
     name2i = {g: i for i, g in enumerate(wm_genes)}
     n_genes = len(wm_genes)
 
-    # Filter to pairs with positive scores
+    # Positive scores gate active contexts and retain the historical scale.
     active_pairs = [
         pname for pname in pair_names
         if pair_scores.get(pname, 0.0) > 0
@@ -178,7 +189,7 @@ def build_per_pair_ldscores(
     if not active_pairs:
         return {}, snp_names
 
-    # Batch: stack all gene vectors into a matrix, single sparse matmul
+    # Batch all score-scaled membership vectors into one sparse matmul.
     gene_matrix = np.zeros((n_genes, len(active_pairs)), dtype=np.float64)
     for col, pname in enumerate(active_pairs):
         score = pair_scores[pname]
@@ -203,16 +214,18 @@ def build_per_pair_membership_ldscores(
     pair_genes: dict[str, tuple[list[str], list[str]]],
     resource_dir: str | Path | None = None,
 ) -> tuple[dict[str, np.ndarray], list[str]]:
-    """Build per-LR-pair binary membership LD scores.
+    """Build binary constituent-gene membership LD scores for LR contexts.
 
-    For each pair p, creates a gene-level binary indicator (1 if the gene
-    belongs to the pair's ligands or receptors, 0 otherwise), then maps to
-    SNP-level via W.  This captures the LD structure around the pair's genes
-    independently of their communication specificity score.
+    For each context p, this creates a gene-level binary indicator (1 if the
+    gene belongs to its ligands or receptors, 0 otherwise), then maps it to SNP
+    level via W. The result is useful as an unscaled parameterization or for
+    diagnostics.
 
-    Used as a control in per-pair S-LDSC to ensure the pair's tau reflects
-    spatially structured communication rather than gene-level functional
-    importance.
+    Do not include this vector in the same regression as the corresponding
+    output of :func:`build_per_pair_ldscores`: the latter is exactly a positive
+    scalar multiple of this vector. Such a design cannot separate constituent
+    gene membership from a pair identity or communication effect, and
+    ``run_per_pair_ldsc_custom`` rejects it explicitly.
 
     Args:
         pair_names: list of pair labels to process

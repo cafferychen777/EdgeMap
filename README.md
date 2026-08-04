@@ -1,18 +1,25 @@
 # EdgeMap
 
-**Edge-centric heritability mapping via spatial cell–cell communication**
+**Heritability mapping with spatially informed ligand–receptor gene annotations**
 
-EdgeMap decomposes trait heritability into cell-intrinsic (**node**) and cell–cell communication (**edge**) components using spatial transcriptomics and GWAS summary statistics. The core question is simple: genetic effects may localize not only to cells themselves, but also to the molecular interfaces between neighboring cells.
+EdgeMap integrates spatial transcriptomics with GWAS summary statistics. Its
+primary analysis tests whether trait heritability is conditionally associated
+with a spatially weighted ligand–receptor (LR) gene annotation after accounting
+for baseline genomic annotations and cell-intrinsic expression specificity.
 
-Existing methods such as S-LDSC, scDRS, and gsMap map genetic risk to individual cells. EdgeMap tests the complementary hypothesis that heritability can also concentrate in spatially structured intercellular signaling.
+The aggregate statistic is an annotation-level association. It does not by
+itself establish that cell–cell communication is causal. A secondary analysis
+uses curated, spatially active LR contexts to prioritize their small
+constituent-gene sets; that analysis does not identify a directed LR relation or
+a molecular interaction.
 
 ## How it works
 
-1. **Spatial communication** — Build a Gaussian-weighted spatial neighbor graph (`k=6`) and compute LR communication intensity per cell using mass-action kinetics with a bottleneck model for multi-subunit complexes.
-2. **Node and edge scores** — Quantify where expression is spatially concentrated (**node**) and where communication is spatially concentrated (**edge**).
+1. **Spatial LR activity proxy** — Build a Gaussian-weighted spatial neighbor graph (`k=6`) and compute a mass-action-inspired expression proxy for each curated LR label, using a bottleneck rule for multi-subunit complexes. This proxy does not measure binding or signaling flux.
+2. **Node and aggregate LR-gene scores** — Quantify where expression is spatially concentrated (**node**) and assign genes a spatially informed aggregate LR score (**edge**, retained as the public field name for compatibility).
 3. **SNP annotation** — Map gene-level scores to SNP-level LD scores using gsMap's pre-computed SNP–gene weight matrix.
-4. **S-LDSC regression** — Regress GWAS chi-squared statistics on baseline + node + edge annotations to estimate node and edge heritability enrichment.
-5. **Per-pair ranking** — If the aggregate edge signal is significant, run conditional S-LDSC for individual LR pairs against baseline + node to rank the channels driving the signal.
+4. **S-LDSC regression** — Regress GWAS chi-squared statistics on baseline + node + aggregate LR-gene annotations to estimate their conditional associations with heritability.
+5. **LR-context gene-set ranking** — By default, a positive aggregate LR-gene screen triggers conditional S-LDSC ranking of active LR-context constituent-gene annotations. Use `--rank-contexts` only for a prespecified exploratory setting that should be ranked regardless of the aggregate screen.
 
 Runtime is typically **tens of seconds to a few minutes** per trait–tissue pair, depending on tissue size, the number of active LR pairs, disk I/O, and hardware.
 
@@ -154,6 +161,7 @@ results = edgemap.run(edgemap.PipelineConfig(
 | `--n-blocks` | `regression.n_blocks` | 200 | Jackknife blocks for standard errors |
 | `--gene-chunk-size` | `score.gene_chunk_size` | auto | Genes per node-score chunk; useful for memory control on large datasets |
 | `--preprocessed` | `spatial.preprocessed` | off | Skip normalization/log1p when the input is already preprocessed |
+| `--rank-contexts` | `run_context_ranking` | off | Force exploratory LR-context constituent-gene ranking even when the aggregate screen is not positive |
 | — | `spatial.min_cells_per_gene` | 10 | Minimum number of cells required for a gene to be retained before scoring |
 
 ## Output
@@ -175,37 +183,58 @@ Primary summary output. The schema is concise but not minimal; the fields below 
 | `node_edge_spearman` | Spearman correlation between node and edge scores |
 | `annotation_diagnostics` | Gene/SNP mapping diagnostics for the annotation-building step |
 | `regression.ell_node` | Node heritability enrichment: `tau`, `se`, `z`, `p_twosided`, `p_onesided` |
-| `regression.ell_edge` | Edge heritability enrichment: `tau`, `se`, `z`, `p_twosided`, `p_onesided` |
+| `regression.ell_edge` | Conditional aggregate LR-gene annotation result: `tau`, `se`, `z`, `p_twosided`, `p_onesided` |
 | `regression.intercept` | S-LDSC intercept |
 | `regression.n_snps`, `regression.N_bar`, `regression.M_total` | Regression metadata |
-| `edge_significant` | `true` if aggregate edge `p_onesided < 0.05` |
-| `n_pairs_tested` | Number of LR pairs ranked in conditional S-LDSC (present only when generated) |
+| `edge_significant` | `true` if the aggregate LR-gene annotation has `p_onesided < 0.05` (legacy field name retained for compatibility) |
+| `n_pairs_tested` | Number of LR contexts whose constituent-gene annotations were ranked (present only when generated) |
 | `total_time_s` | End-to-end runtime |
 
-Interpretation: a significant edge tau means trait-associated variants are enriched near genes whose spatial communication patterns are concentrated, beyond what cell-intrinsic expression specificity explains.
+Interpretation: a significantly positive `ell_edge` tau is evidence of a
+conditional association between trait heritability and the spatially weighted
+LR-gene annotation, beyond the included baseline and node controls. This result
+is not, on its own, evidence for a causal communication mechanism.
 
 ### `per_pair_sldsc.csv`
 
-Generated only when the aggregate edge signal is significant. Each row is one LR pair tested conditionally against baseline + node.
+Generated when the aggregate LR-gene screen is positive, or when the user
+explicitly passes `--rank-contexts` for a prespecified exploratory analysis.
+Each row is indexed by an active LR context and tests the annotation formed by
+the union of its ligand and receptor genes, conditionally on baseline + node.
+The override does not provide multiplicity control or the publication's
+separate empirical-null calibration.
 
 | Column | Meaning |
 |--------|---------|
-| `pair` | LR pair label (for example `VEGFA-FLT1`) |
-| `tau` | Pair-specific heritability coefficient |
+| `pair` | LR context label (for example `VEGFA-FLT1`) |
+| `tau` | Scale-dependent coefficient for the context's constituent-gene annotation |
 | `se` | Block-jackknife standard error |
 | `z` | Ranking score (`tau / se`) |
 
-Use `z` for **ranking**, not for calibrated significance testing. Per-pair annotations are extremely sparse, so the normal approximation for `z` is not reliable here; formal per-pair significance requires empirical calibration.
+For compatibility with existing results, every participating gene is assigned
+the context's positive spatial specificity score. This is a scale convention:
+the resulting LD-score vector is that positive scalar times the binary
+constituent-gene membership vector. Changing the scalar rescales `tau` and `se`
+inversely but leaves `z` unchanged; reversing ligand and receptor labels also
+leaves the annotation unchanged. Consequently, `z` prioritizes a directionless,
+LR-context-indexed constituent-gene set. It does not identify the LR relation,
+direction, interaction, or communication intensity.
+
+Use `z` for **ranking**, not for calibrated significance testing. These
+annotations are extremely sparse, so the normal approximation for `z` is not
+reliable here; formal inference requires empirical calibration. Calibration
+addresses the null distribution but does not change the estimand described
+above.
 
 ### `lr_pair_stats.json`
 
-Communication diagnostics for all active LR pairs.
+Spatial LR activity diagnostics for all active LR contexts.
 
 | Field | Meaning |
 |-------|---------|
-| `mean_comm` | Mean communication intensity across cells |
-| `n_active_cells` | Number of cells with nonzero communication |
-| `pair_score` | Spatial specificity score for that LR pair |
+| `mean_comm` | Mean LR activity proxy across cells |
+| `n_active_cells` | Number of cells with nonzero LR activity proxy |
+| `pair_score` | Spatial specificity score for that LR context |
 
 ## Repository scope
 
@@ -216,8 +245,9 @@ documented in [`reproducibility/`](reproducibility/README.md). The quickstart is
 an aggregate-workflow installation and output-schema smoke test. It requires
 the separately installed gsMap resource archive (approximately 621 MiB to
 download as checked on 3 August 2026), does not trigger the conditional
-per-pair branch with its fixed synthetic input, and does not run the
-50,000-replicate empirical calibration used for manuscript per-pair inference.
+LR-context gene-set branch with its fixed synthetic input, and does not run the
+50,000-replicate empirical calibration used for manuscript LR-context
+inference.
 A manuscript reproducibility archive must not be described as complete until
 every row of the publication manifest has passed its release gate.
 
@@ -228,7 +258,7 @@ every row of the publication manifest has passed its release gate.
 | `h5ad must contain .obsm['spatial']` | Ensure spatial coordinates are present in the AnnData object |
 | `Expression values look pre-processed` | Provide raw counts, or set `--preprocessed` |
 | `gsMap resource directory not found` | Set `EDGEMAP_RESOURCE_DIR` or pass `--resource-dir` |
-| No `per_pair_sldsc.csv` in output | Expected when the aggregate edge signal is not significant |
+| No `per_pair_sldsc.csv` in output | Expected when the aggregate LR-gene screen is not positive |
 
 ## Citation
 

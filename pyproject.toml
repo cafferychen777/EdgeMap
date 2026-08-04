@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "edgemap"
 version = "0.2.0"
-description = "Edge-centric heritability mapping via spatial cell-cell communication"
+description = "Heritability mapping with spatially informed ligand-receptor gene annotations"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"

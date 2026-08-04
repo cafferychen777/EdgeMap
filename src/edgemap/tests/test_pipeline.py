@@ -229,6 +229,39 @@ def test_pipeline_non_significant_edge_skips_per_pair(monkeypatch, tmp_path):
     assert not (out_dir / "per_pair_sldsc.csv").exists()
 
 
+def test_pipeline_can_force_context_ranking_after_nonpositive_screen(monkeypatch, tmp_path):
+    """An explicit exploratory request can bypass the aggregate-screen gate."""
+    adata = _toy_adata()
+    _patch_pipeline_common(monkeypatch, adata, edge_p=0.42)
+    monkeypatch.setattr(
+        "edgemap.pipeline.build_per_pair_ldscores",
+        lambda *args, **kwargs: ({"G0-G1": np.array([0.4, 0.2])}, ["rs1", "rs2"]),
+    )
+    monkeypatch.setattr(
+        "edgemap.pipeline.run_per_pair_ldsc",
+        lambda *args, **kwargs: pd.DataFrame(
+            {"pair": ["G0-G1"], "tau": [0.2], "se": [0.05], "z": [4.0]}
+        ),
+    )
+
+    out_dir = tmp_path / "out_forced_contexts"
+    cfg = PipelineConfig(
+        st_h5ad="fake_st.h5ad",
+        gwas_sumstats="fake_sumstats.tsv",
+        gwas_label="fake_trait",
+        output_dir=str(out_dir),
+        resource_dir="/fake_resource",
+        run_context_ranking=True,
+    )
+    output = run(cfg)
+
+    assert output["edge_significant"] is False
+    assert output["n_pairs_tested"] == 1
+    assert output["context_ranking_reason"] == "explicit_request"
+    assert output["params"]["run_context_ranking"] is True
+    assert (out_dir / "per_pair_sldsc.csv").exists()
+
+
 def test_pipeline_uses_cached_regression_resources_without_copy(monkeypatch, tmp_path):
     """Pipeline should opt into shared cached regression resources for speed."""
     adata = _toy_adata()

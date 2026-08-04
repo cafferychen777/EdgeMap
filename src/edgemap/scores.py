@@ -1,5 +1,5 @@
 """
-Gene-level score computation: Node (GSS) and Edge (ESS).
+Gene-level score computation: node (GSS) and spatial LR-gene (CSS).
 
 Steps 3-4 of the pipeline.
 
@@ -8,13 +8,13 @@ Both scores follow the same design principle:
   2. Aggregate to a single gene-level score.
 
 Node: per-spot expression specificity → max over cells.
-Edge: per-LR-pair communication specificity → max (default) or mean over pairs per gene.
+Edge: per-context LR activity specificity -> max (default) or mean over contexts per gene.
 
-The edge score computes specificity per LR pair first, then assigns each
-gene the score of its strongest pair (max, default) or the mean across all
-active pairs (mean, for sensitivity analysis). Max avoids shared-subunit
-inflation (e.g. ITGB1 in 50+ pairs) and follows the consensus of CCC tools
-(CellChat, CellPhoneDB): never aggregate LR pair scores by summing at gene level.
+The edge score computes specificity per curated LR context first, then assigns
+each gene the score of its strongest context (max, default) or the mean across
+all active contexts (mean, for sensitivity analysis). The max is an EdgeMap
+design choice that avoids mechanically increasing a score when a shared gene
+appears in many labels; it is not a consensus rule inherited from CCC tools.
 """
 
 import numpy as np
@@ -106,7 +106,7 @@ def compute_edge_scores(
     gene_names: list[str],
     cfg: ScoreConfig,
 ) -> tuple[np.ndarray, dict]:
-    """Communication specificity per gene from spatial-weighted communication.
+    """Context specificity per gene from spatially weighted LR activity proxies.
 
     Algorithm:
       1. For each LR pair, specificity(cell) = comm(cell) / mean(comm).
@@ -118,7 +118,7 @@ def compute_edge_scores(
     the score of its strongest pair, not 50x accumulated signal.
 
     Args:
-        comm: (n_cells, n_pairs) communication intensity from compute_communication
+        comm: (n_cells, n_pairs) LR activity proxy from compute_communication
         pair_names: pair labels aligned with comm columns
         pair_genes: dict mapping label -> (lig_genes, rec_genes)
         gene_names: gene name list from expression matrix
@@ -146,7 +146,7 @@ def compute_edge_scores(
         if pair_mean <= 0:
             continue
 
-        # Specificity: spatial concentration of this pair's signaling
+        # Specificity: spatial concentration of this context's activity proxy
         spec = pair_comm / pair_mean
         pair_score = float(np.percentile(spec, cfg.edge_agg_percentile))
 

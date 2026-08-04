@@ -126,6 +126,7 @@ class PipelineConfig:
     gwas_label: str = ""
     output_dir: str = "results"
     resource_dir: str | None = None
+    run_context_ranking: bool = False
 
     spatial: SpatialConfig = field(default_factory=SpatialConfig)
     score: ScoreConfig = field(default_factory=ScoreConfig)

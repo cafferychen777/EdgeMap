@@ -5,9 +5,9 @@ EdgeMap quickstart: core-pipeline smoke test on synthetic data.
 Generates a small synthetic Visium-like dataset (~500 spots, ~200 genes)
 and synthetic GWAS summary statistics, then runs the aggregate EdgeMap
 workflow to demonstrate installation and output schemas. It does not run the
-manuscript's separate empirical per-pair calibration, and the conditional
-per-pair branch is exercised only if the synthetic aggregate edge result passes
-its screening threshold.
+    manuscript's separate empirical LR-context calibration, and the conditional
+    gene-set ranking branch is exercised only if the synthetic aggregate
+    LR-gene result passes its screening threshold.
 
 Usage:
     python quickstart/run_quickstart.py
@@ -21,8 +21,8 @@ Requirements:
 Output:
     quickstart/output/
         results.json          -- pipeline summary with tau, z, and p-values
-        lr_pair_stats.json    -- per-LR-pair communication statistics
-        per_pair_sldsc.csv    -- per-pair conditional S-LDSC (if edge is significant)
+        lr_pair_stats.json    -- spatial statistics for active LR contexts
+        per_pair_sldsc.csv    -- LR-context gene-set ranking (if aggregate screen is positive)
         demo_visium.h5ad      -- the synthetic spatial dataset
         demo_gwas.tsv         -- the synthetic GWAS summary statistics
 """
@@ -50,9 +50,8 @@ def make_demo_visium(
     """Create a synthetic Visium-like AnnData with spatial structure.
 
     The dataset has three spatial domains arranged in a grid. Ligand and
-    receptor genes are expressed in complementary domains so that LR
-    communication is spatially concentrated at domain boundaries -- the
-    biological signal EdgeMap is designed to detect.
+    receptor genes are expressed in complementary domains so that the LR
+    activity proxy is spatially concentrated at domain boundaries.
 
     Args:
         n_spots: Number of spots (default 500).
@@ -109,7 +108,7 @@ def make_demo_visium(
 
     # Ligand genes: upregulated in domain 0 (left)
     # Receptor genes: upregulated in domain 2 (right)
-    # This creates communication concentrated at the domain 0-1 boundary
+    # This creates a concentrated LR activity proxy at the domain 0-1 boundary
     ligand_genes = selected_pairs["source_genesymbol"].unique()
     receptor_genes = selected_pairs["target_genesymbol"].unique()
 
@@ -293,30 +292,30 @@ def main():
     print(f"  demo_visium.h5ad      Synthetic spatial transcriptomics data")
     print(f"  demo_gwas.tsv         Synthetic GWAS summary statistics")
     print(f"  results.json          Pipeline results (tau, z, p-values)")
-    print(f"  lr_pair_stats.json    Per-LR-pair communication statistics")
+    print("  lr_pair_stats.json    Spatial statistics for active LR contexts")
     per_pair_output = out_dir / "per_pair_sldsc.csv"
     if per_pair_output.exists():
-        print(f"  per_pair_sldsc.csv    Per-pair conditional S-LDSC results")
-        print("\nThe aggregate screen was positive, so the conditional per-pair")
+        print("  per_pair_sldsc.csv    LR-context constituent-gene rankings")
+        print("\nThe aggregate screen was positive, so the LR-context gene-set")
         print("ranking branch ran. These z-scores are not empirically calibrated.")
     else:
-        print("\nThe aggregate screen was not positive, so the conditional per-pair")
-        print("branch did not run for this synthetic example.")
+        print("\nThe aggregate screen was not positive, so the LR-context gene-set")
+        print("ranking branch did not run for this synthetic example.")
     print("The 50,000-replicate empirical calibration used for manuscript")
-    print("per-pair inference is outside the scope of this smoke test.")
+    print("LR-context inference is outside the scope of this smoke test.")
 
     print("\n--- How to interpret results.json ---")
     print()
-    print("The key output is the S-LDSC regression, testing whether")
-    print("cell-cell communication (edge) carries trait heritability")
-    print("beyond what expression specificity (node) explains.")
+    print("The key output is the S-LDSC regression, testing the conditional")
+    print("association of the aggregate spatial LR-gene annotation (edge)")
+    print("after baseline and expression-specificity (node) controls.")
     print()
 
     reg = results["regression"]
     for name in ["ell_node", "ell_edge"]:
         r = reg[name]
         label = "Node (expression specificity)" if name == "ell_node" \
-                else "Edge (communication)"
+                else "Edge (aggregate spatial LR-gene annotation)"
         sig = "SIGNIFICANT" if r["p_onesided"] < 0.05 else "not significant"
         print(f"  {label}:")
         print(f"    tau = {r['tau']:.4e}  (effect size per SNP)")

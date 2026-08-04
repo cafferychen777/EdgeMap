@@ -1,6 +1,6 @@
 """
-EdgeMap: Decompose trait heritability into node-intrinsic
-and edge-interactive components via spatial cell-cell communication.
+EdgeMap: heritability mapping with spatially informed ligand-receptor
+gene annotations.
 """
 
 from importlib.metadata import version as _version

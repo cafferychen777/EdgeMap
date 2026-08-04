@@ -97,6 +97,81 @@ def test_build_per_pair_ldscores_returns_empty_when_no_positive_scores(monkeypat
     assert snps == ["rs1", "rs2"]
 
 
+def test_per_pair_score_is_only_a_positive_scale_convention(monkeypatch):
+    W = sparse.csr_matrix(
+        np.array(
+            [
+                [1.0, 0.2, 0.0],
+                [0.0, 0.7, 1.3],
+                [0.4, 0.0, 0.9],
+            ],
+            dtype=np.float64,
+        )
+    )
+    ann._weight_cache.clear()
+    ann._weight_cache["__scale_test__"] = (
+        W,
+        ["rs1", "rs2", "rs3"],
+        ["L", "R", "OTHER"],
+    )
+
+    try:
+        monkeypatch.setattr("edgemap.annotation.resolve_resource_dir", lambda _: "__scale_test__")
+        pair_ld, _ = build_per_pair_ldscores(
+            pair_names=["low-scale", "high-scale"],
+            pair_genes={
+                "low-scale": (["L"], ["R"]),
+                "high-scale": (["L"], ["R"]),
+            },
+            pair_scores={"low-scale": 2.0, "high-scale": 7.0},
+            resource_dir="__scale_test__",
+        )
+    finally:
+        ann._weight_cache.clear()
+
+    np.testing.assert_allclose(
+        pair_ld["high-scale"],
+        (7.0 / 2.0) * pair_ld["low-scale"],
+        rtol=1e-14,
+        atol=1e-14,
+    )
+
+
+def test_per_pair_annotation_is_invariant_to_ligand_receptor_orientation(monkeypatch):
+    W = sparse.csr_matrix(
+        np.array(
+            [
+                [1.0, 0.2],
+                [0.3, 1.4],
+                [0.8, 0.5],
+            ],
+            dtype=np.float64,
+        )
+    )
+    ann._weight_cache.clear()
+    ann._weight_cache["__orientation_test__"] = (
+        W,
+        ["rs1", "rs2", "rs3"],
+        ["L", "R"],
+    )
+
+    try:
+        monkeypatch.setattr(
+            "edgemap.annotation.resolve_resource_dir",
+            lambda _: "__orientation_test__",
+        )
+        pair_ld, _ = build_per_pair_ldscores(
+            pair_names=["L-R", "R-L"],
+            pair_genes={"L-R": (["L"], ["R"]), "R-L": (["R"], ["L"])},
+            pair_scores={"L-R": 3.0, "R-L": 3.0},
+            resource_dir="__orientation_test__",
+        )
+    finally:
+        ann._weight_cache.clear()
+
+    np.testing.assert_array_equal(pair_ld["L-R"], pair_ld["R-L"])
+
+
 def test_annotation_weights_are_cached_per_resource(monkeypatch):
     wm = ad.AnnData(
         X=np.array([[1.0, 0.0], [0.0, 1.0]], dtype=np.float64)

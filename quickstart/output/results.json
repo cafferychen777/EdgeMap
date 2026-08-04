@@ -1,6 +1,6 @@
 {
   "gwas_label": "demo_trait",
-  "st_data": "quickstart/output/demo_visium.h5ad",
+  "st_data": "/Users/apple/Research/EdgeMap/quickstart/output/demo_visium.h5ad",
   "params": {
     "k_spatial": 6,
     "dis_thr": 300.0,
@@ -8,7 +8,8 @@
     "edge_agg_method": "max",
     "kernel_bandwidth_frac": 0.3333333333333333,
     "gene_chunk_size_requested": null,
-    "gene_chunk_size_resolved": 2000
+    "gene_chunk_size_resolved": 2000,
+    "run_context_ranking": false
   },
   "n_genes": 200,
   "n_lr_pairs_active": 62,
@@ -41,5 +42,5 @@
     "intercept": 1.1573586098087665
   },
   "edge_significant": false,
-  "total_time_s": 3.4
+  "total_time_s": 3.6
 }

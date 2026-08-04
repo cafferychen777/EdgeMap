@@ -2,7 +2,7 @@
 End-to-end pipeline orchestration.
 
 Chains all steps with timing and diagnostics.
-Single spatial graph construction feeds both node scores and communication,
+Single spatial graph construction feeds both node scores and the LR activity proxy,
 with consistent d_max filtering applied to both.
 """
 
@@ -78,8 +78,8 @@ def run(cfg: PipelineConfig, adata: ad.AnnData | None = None) -> dict:
           + (f" ({n_filtered} neighbor slots beyond d_max)" if n_filtered else ""))
     print(f"  {time.time() - t0:.1f}s")
 
-    # -- Step 2: Spatial communication ---------------------------------
-    print("\n[2/7] Computing spatial communication for LR pairs...")
+    # -- Step 2: Spatial LR activity proxy ------------------------------
+    print("\n[2/7] Computing spatial LR activity scores...")
     t0 = time.time()
 
     pairs = load_lr_pairs(adata_work)
@@ -90,20 +90,21 @@ def run(cfg: PipelineConfig, adata: ad.AnnData | None = None) -> dict:
     )
     del W, coords
 
-    print(f"  {len(pairs)} active LR pairs, {comm.shape[0]:,} cells")
+    print(f"  {len(pairs)} active LR contexts, {comm.shape[0]:,} cells")
     print(f"  {time.time() - t0:.1f}s")
 
-    # -- Step 3: Edge scores (communication specificity) ------------
-    print("\n[3/7] Computing edge scores (communication specificity)...")
+    # -- Step 3: Aggregate spatial LR-gene scores -----------------------
+    print("\n[3/7] Computing aggregate spatial LR-gene scores...")
     t0 = time.time()
 
     edge_arr, lr_stats = compute_edge_scores(
         comm, pair_names, pair_genes, genes, score_cfg,
     )
-    del comm  # free communication matrix
+    del comm  # free LR activity matrix
 
     edge_scores = pd.Series(edge_arr, index=genes)
-    print(f"  {(edge_arr > 0).sum()} genes with edge signal, {len(lr_stats)} active LR pairs")
+    print(f"  {(edge_arr > 0).sum()} genes with nonzero LR-gene score, "
+          f"{len(lr_stats)} active LR contexts")
     print(f"  {time.time() - t0:.1f}s")
 
     # -- Step 4: Node scores (expression specificity) ---------------
@@ -164,16 +165,25 @@ def run(cfg: PipelineConfig, adata: ad.AnnData | None = None) -> dict:
     print(f"  {'intercept':<16} {results['intercept']:>12.4f}")
     print(f"  {time.time() - t0:.1f}s")
 
-    # -- Per-pair conditional testing (if aggregate edge is significant) --
+    # -- Exploratory LR-context constituent-gene ranking ----------------
     edge_p = results["ell_edge"]["p_onesided"]
     edge_sig = edge_p < 0.05
     per_pair_results = None
+    ranking_reason = None
 
-    if edge_sig and lr_stats:
-        print("\n[7b/7] Edge significant — running per-LR-pair conditional S-LDSC...")
+    if (edge_sig or cfg.run_context_ranking) and lr_stats:
+        ranking_reason = "aggregate_screen" if edge_sig else "explicit_request"
+        if edge_sig:
+            print("\n[7b/7] Aggregate LR-gene screen positive — "
+                  "ranking LR-context constituent-gene annotations...")
+        else:
+            print("\n[7b/7] Explicit exploratory request — ranking LR-context "
+                  "constituent-gene annotations despite a non-positive "
+                  "aggregate screen...")
         t0 = time.time()
 
-        # Build per-pair LD scores using each pair's specificity score
+        # Positive PairScore gates contexts and retains the historical scale.
+        # Within a context it is a scalar convention: z is score-invariant.
         pair_scores = {
             pname: stats["pair_score"]
             for pname, stats in lr_stats.items()
@@ -191,10 +201,10 @@ def run(cfg: PipelineConfig, adata: ad.AnnData | None = None) -> dict:
                 w_ld, M_total, cfg.regression,
             )
             n_tested = len(per_pair_results) if per_pair_results is not None else 0
-            print(f"  Tested {len(pair_ld)} pairs, ranked by z-score")
+            print(f"  Ranked {len(pair_ld)} LR-context gene sets by z-score")
             if n_tested > 0:
                 top = per_pair_results.iloc[0]
-                print(f"  Top pair: {top['pair']} (z={top['z']:.2f})")
+                print(f"  Top LR context: {top['pair']} (z={top['z']:.2f})")
             print(f"  {time.time() - t0:.1f}s")
 
     # -- Verdict -----------------------------------------------------
@@ -202,11 +212,11 @@ def run(cfg: PipelineConfig, adata: ad.AnnData | None = None) -> dict:
 
     print(f"\n{'=' * 60}")
     if edge_sig:
-        print(f"RESULT: Edge tau SIGNIFICANT (p={edge_p:.4e})")
-        print("  Cell-cell communication carries trait heritability")
-        print("  beyond what expression specificity explains.")
+        print(f"RESULT: Aggregate LR-gene annotation tau SIGNIFICANT (p={edge_p:.4e})")
+        print("  Positive conditional association with trait heritability after")
+        print("  baseline and expression-specificity controls; not a causal claim.")
     else:
-        print(f"RESULT: Edge tau not significant (p={edge_p:.4e})")
+        print(f"RESULT: Aggregate LR-gene annotation tau not significant (p={edge_p:.4e})")
     print(f"Total time: {total_time:.1f}s")
     print(f"{'=' * 60}")
 
@@ -222,6 +232,7 @@ def run(cfg: PipelineConfig, adata: ad.AnnData | None = None) -> dict:
             "kernel_bandwidth_frac": score_cfg.kernel_bandwidth_frac,
             "gene_chunk_size_requested": cfg.score.gene_chunk_size,
             "gene_chunk_size_resolved": score_cfg.gene_chunk_size,
+            "run_context_ranking": cfg.run_context_ranking,
         },
         "n_genes": len(genes),
         "n_lr_pairs_active": len(lr_stats),
@@ -238,6 +249,7 @@ def run(cfg: PipelineConfig, adata: ad.AnnData | None = None) -> dict:
     if per_pair_results is not None and len(per_pair_results) > 0:
         per_pair_results.to_csv(out / "per_pair_sldsc.csv", index=False)
         output["n_pairs_tested"] = len(per_pair_results)
+        output["context_ranking_reason"] = ranking_reason
 
     # Write results.json AFTER all fields are populated
     with open(out / "results.json", "w") as f:

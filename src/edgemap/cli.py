@@ -9,8 +9,8 @@ from .pipeline import run
 def main():
     parser = argparse.ArgumentParser(
         prog="edgemap",
-        description="EdgeMap: edge-centric heritability mapping "
-                    "via spatial cell-cell communication",
+        description="EdgeMap: heritability mapping with spatially informed "
+                    "ligand-receptor gene annotations",
     )
     parser.add_argument("--st", required=True,
                         help="Path to spatial transcriptomics h5ad file")
@@ -34,6 +34,12 @@ def main():
                              "(default: auto-scale by cell count)")
     parser.add_argument("--preprocessed", action="store_true",
                         help="Skip normalization (data already log1p-normalized)")
+    parser.add_argument(
+        "--rank-contexts",
+        action="store_true",
+        help="Run exploratory LR-context constituent-gene ranking even when "
+             "the aggregate LR-gene screen is not positive",
+    )
 
     args = parser.parse_args()
 
@@ -43,6 +49,7 @@ def main():
         gwas_label=args.gwas_label,
         output_dir=args.output,
         resource_dir=args.resource_dir,
+        run_context_ranking=args.rank_contexts,
         spatial=SpatialConfig(
             k_spatial=args.k_spatial,
             dis_thr=args.dis_thr,

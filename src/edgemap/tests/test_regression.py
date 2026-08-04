@@ -133,7 +133,7 @@ def test_run_sldsc_returns_expected_structure():
         assert 0.0 <= out[key]["p_twosided"] <= 1.0
 
 
-def test_run_per_pair_ldsc_skips_zero_and_applies_bonferroni():
+def test_run_per_pair_ldsc_skips_zero_and_returns_ranking_columns():
     sumstats, baseline, annot_ld, w_ld = _toy_regression_inputs()
     cfg = RegressionConfig(n_blocks=3)
 
@@ -197,6 +197,85 @@ def test_run_per_pair_ldsc_custom_accepts_multiple_controls():
 
     assert list(out["pair"]) == ["pair_active"]
     assert np.isfinite(out.iloc[0]["tau"])
+
+
+def test_per_pair_z_is_invariant_to_positive_scalar_rescaling():
+    rng = np.random.default_rng(123)
+    n_snps = 80
+    snp_names = [f"rs{i}" for i in range(n_snps)]
+    baseline_values = rng.uniform(0.1, 1.0, n_snps)
+    node_values = rng.uniform(0.1, 1.0, n_snps)
+    membership_values = rng.uniform(0.0, 1.0, n_snps)
+    sample_size = np.full(n_snps, 1000.0)
+
+    expected_chisq = (
+        1.0
+        + sample_size
+        * (
+            0.0002 * baseline_values
+            + 0.0003 * node_values
+            + 0.0005 * membership_values
+        )
+        + rng.normal(0.0, 0.02, n_snps)
+    )
+    sumstats = pd.DataFrame(
+        {
+            "SNP": snp_names,
+            "Z": np.sqrt(np.maximum(expected_chisq, 0.01)),
+            "N": sample_size,
+        }
+    )
+    baseline = pd.DataFrame({"SNP": snp_names, "base": baseline_values})
+    controls = pd.DataFrame({"SNP": snp_names, "ell_node": node_values})
+    weights = pd.DataFrame({"SNP": snp_names, "L2": np.ones(n_snps)})
+    scale = 7.3
+
+    out = run_per_pair_ldsc_custom(
+        sumstats=sumstats,
+        baseline=baseline,
+        annot_ld_controls=controls,
+        pair_ld_scores={
+            "membership-scale": membership_values,
+            "rescaled": scale * membership_values,
+        },
+        snp_names=snp_names,
+        w_ld=weights,
+        M_total=1_000_000.0,
+        cfg=RegressionConfig(n_blocks=10),
+        control_cols=["ell_node"],
+    ).set_index("pair")
+
+    assert out.loc["rescaled", "tau"] == pytest.approx(
+        out.loc["membership-scale", "tau"] / scale,
+        rel=1e-10,
+    )
+    assert out.loc["rescaled", "se"] == pytest.approx(
+        out.loc["membership-scale", "se"] / scale,
+        rel=1e-9,
+    )
+    assert out.loc["rescaled", "z"] == pytest.approx(
+        out.loc["membership-scale", "z"],
+        rel=1e-9,
+    )
+
+
+def test_per_pair_rejects_exact_own_membership_collinearity():
+    sumstats, baseline, annot_ld, w_ld = _toy_regression_inputs()
+    membership = np.array([0.2, 0.1, 0.4, 0.2, 0.3])
+
+    with pytest.raises(ValueError, match="positive scalar multiples"):
+        run_per_pair_ldsc_custom(
+            sumstats=sumstats,
+            baseline=baseline,
+            annot_ld_controls=annot_ld[["SNP", "ell_node"]],
+            pair_ld_scores={"L-R": 2.5 * membership},
+            pair_membership_ld_scores={"L-R": membership},
+            snp_names=["rs1", "rs2", "rs3", "rs4", "rs5"],
+            w_ld=w_ld,
+            M_total=1_000_000.0,
+            cfg=RegressionConfig(n_blocks=3),
+            control_cols=["ell_node"],
+        )
 
 
 def test_load_baseline_casts_float16_and_accumulates_M(monkeypatch):

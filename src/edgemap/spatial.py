@@ -1,18 +1,16 @@
 """
-Spatial graph construction and communication inference.
+Spatial graph construction and LR activity-proxy computation.
 
 Steps 1-2 of the pipeline: ST data -> spatial graph -> communication scores.
 
 The spatial graph (Gaussian-weighted KNN) serves two purposes:
   1. Define spatial neighborhoods for node score (expression specificity).
-  2. Model ligand diffusion range for spatial-weighted communication.
+  2. Weight ligand expression around each receptor-expressing spatial unit.
 
-Communication intensity per cell per LR pair is computed via spatial-weighted
-product: comm(j) = R_eff(j) * (W @ L_eff)(j). This models mass-action kinetics
-with spatial ligand diffusion: the Gaussian-weighted spatial graph models
-ligand reaching nearby cells, and the product with receptor expression models
-binding at the receiver. Validated by proximity ligation assay against actual
-protein-protein interactions (CytoSignal, bioRxiv 2024).
+The LR activity proxy per cell and curated LR label is the spatially weighted
+product comm(j) = R_eff(j) * (W @ L_eff)(j). This mass-action-inspired
+expression proxy summarizes local ligand--receptor co-occurrence. It does not
+measure diffusion, binding, signaling flux, or a molecular interaction.
 """
 import warnings
 import numpy as np
@@ -207,9 +205,9 @@ def compute_communication(
     pairs: list[tuple[list[str], list[str], str]],
     gene_names: list[str],
 ) -> tuple[np.ndarray, list[str], dict[str, tuple[list[str], list[str]]]]:
-    """Spatial-weighted communication intensity for each LR pair.
+    """Spatially weighted LR activity proxy for each curated LR label.
 
-    Model (mass-action with spatial diffusion):
+    Mass-action-inspired expression proxy:
       L_eff(i) = min(expr(i, l) for l in ligand_subunits)   [bottleneck]
       R_eff(i) = min(expr(i, r) for r in receptor_subunits) [bottleneck]
       comm(i)  = (W @ L_eff)(i) * R_eff(i)
@@ -217,8 +215,9 @@ def compute_communication(
     The min over subunits implements the bottleneck model: a heteromeric
     complex functions at the rate of its least-expressed subunit.
 
-    Expression is converted to natural scale (expm1 of log1p values) before
-    computation, because L * R models mass-action kinetics on concentrations.
+    Expression is converted back from log1p before multiplication. The product
+    is an expression-based scoring convention, not a concentration, binding, or
+    signaling-flux measurement.
 
     Args:
         X: log1p-normalized expression (n_cells, n_genes), sparse or dense
@@ -227,7 +226,7 @@ def compute_communication(
         gene_names: gene name list aligned with X columns
 
     Returns:
-        comm: (n_cells, n_pairs) communication intensity
+        comm: (n_cells, n_pairs) LR activity proxy
         pair_names: list of pair labels
         pair_genes: dict mapping label -> (lig_genes, rec_genes)
     """
@@ -257,7 +256,7 @@ def compute_communication(
         L_eff = _subunit_eff_cached(col_cache, [gene_to_idx[g] for g in ligs])
         R_eff = _subunit_eff_cached(col_cache, [gene_to_idx[g] for g in recs])
 
-        # Spatial-weighted product: diffused ligand × local receptor
+        # Spatially weighted neighboring ligand expression x local receptor expression
         comm[:, pi] = np.asarray(W @ L_eff).flatten() * R_eff
 
         pair_names.append(label)

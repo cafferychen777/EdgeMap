@@ -6,7 +6,7 @@ Step 7 of the pipeline.
 Model:
     E[χ²_s] = 1 + N · Σ_q τ_q · ℓ^(q)_s        (baseline annotations)
                 + N · τ_node · ℓ_node(s)           (expression specificity)
-                + N · τ_edge · ℓ_edge(s)           (communication specificity)
+                + N · τ_edge · ℓ_edge(s)           (spatial LR-gene annotation)
 
 Weights: w_s = 1 / (2 · E[χ²_s]² · w_ld_s)
   - First factor: heteroscedasticity correction (χ² variance ∝ E[χ²]²)
@@ -142,6 +142,36 @@ def _sldsc_weights(
     h2_init = np.clip((y.mean() - 1) * M_total / (N_bar * x_tot.mean()), 0.01, 1.0)
     Ey = 1.0 + np.clip(h2_init * N_bar / M_total * x_tot, 0, 1e4)
     return 1.0 / (2.0 * Ey**2 * w_ld_vals)
+
+
+def _is_positive_scalar_multiple(
+    left: np.ndarray,
+    right: np.ndarray,
+    *,
+    rtol: float = 1e-10,
+    atol: float = 1e-12,
+) -> bool:
+    """Return whether two finite vectors differ only by a positive scalar.
+
+    The tight tolerance accommodates floating-point sparse matrix products
+    without treating merely correlated annotations as the same predictor.
+    """
+    left = np.asarray(left, dtype=np.float64)
+    right = np.asarray(right, dtype=np.float64)
+    if left.shape != right.shape or left.ndim != 1:
+        return False
+    if not np.all(np.isfinite(left)) or not np.all(np.isfinite(right)):
+        return False
+
+    right_norm_sq = float(right @ right)
+    if right_norm_sq <= 0.0:
+        return False
+    scale = float((left @ right) / right_norm_sq)
+    if not np.isfinite(scale) or scale <= 0.0:
+        return False
+
+    comparison_atol = atol * max(1.0, float(np.max(np.abs(left))))
+    return bool(np.allclose(left, scale * right, rtol=rtol, atol=comparison_atol))
 
 
 def _order_genomically(df: pd.DataFrame, baseline: pd.DataFrame) -> pd.DataFrame:
@@ -288,7 +318,7 @@ def run_sldsc(
     M_total: float,
     cfg: RegressionConfig,
 ) -> dict:
-    """Run joint S-LDSC regression with node and edge annotations."""
+    """Run joint S-LDSC with node and aggregate spatial LR-gene annotations."""
     return run_sldsc_custom(
         sumstats, baseline, annot_ld, w_ld, M_total, cfg,
         annot_cols=["ell_node", "ell_edge"],
@@ -307,7 +337,14 @@ def run_per_pair_ldsc_custom(
     control_cols: list[str] | None = None,
     pair_membership_ld_scores: dict[str, np.ndarray] | None = None,
 ) -> pd.DataFrame:
-    """Per-LR-pair conditional S-LDSC with arbitrary control annotations."""
+    """Rank LR-context constituent-gene annotations with arbitrary controls.
+
+    ``pair_membership_ld_scores`` remains available for API compatibility and
+    for non-collinear alternative annotations. If an own-membership vector is a
+    positive scalar multiple of its score-scaled context vector, the two
+    predictors cannot identify separate effects and this function raises a
+    ``ValueError`` rather than silently relying on a pseudoinverse.
+    """
     if control_cols is None:
         control_cols = [c for c in annot_ld_controls.columns if c != "SNP"]
     if not control_cols:
@@ -359,10 +396,17 @@ def run_per_pair_ldsc_custom(
         if pair_ell.max() <= 0:
             continue
 
-        # Build per-pair design matrix: baseline + controls [+ membership] + pair + intercept
+        # Build: baseline + controls [+ non-collinear alternative] + context + intercept.
         extra_cols = []
         if pair_membership_ld_scores is not None and pname in pair_membership_ld_scores:
             membership_ell = pair_membership_ld_scores[pname][snp_idx]
+            if _is_positive_scalar_multiple(pair_ell, membership_ell):
+                raise ValueError(
+                    "Cannot include both the score-scaled LR-context annotation "
+                    f"and its own constituent-gene membership annotation for {pname!r}: "
+                    "they are positive scalar multiples, so separate pair identity "
+                    "or communication effects are not identifiable."
+                )
             extra_cols.append(N * membership_ell)
 
         X = np.column_stack(
@@ -394,7 +438,7 @@ def run_per_pair_ldsc(
     M_total: float,
     cfg: RegressionConfig,
 ) -> pd.DataFrame:
-    """Per-LR-pair conditional S-LDSC: baseline + node + pair."""
+    """Rank LR-context constituent-gene annotations: baseline + node + context."""
     return run_per_pair_ldsc_custom(
         sumstats=sumstats,
         baseline=baseline,
