@@ -5,9 +5,9 @@ EdgeMap quickstart: core-pipeline smoke test on synthetic data.
 Generates a small synthetic Visium-like dataset (~500 spots, ~200 genes)
 and synthetic GWAS summary statistics, then runs the aggregate EdgeMap
 workflow to demonstrate installation and output schemas. It does not run the
-    manuscript's separate empirical LR-context calibration, and the conditional
-    gene-set ranking branch is exercised only if the synthetic aggregate
-    LR-gene result passes its screening threshold.
+manuscript's separate empirical LR-context calibration, and the conditional
+gene-set ranking branch is exercised only if the synthetic aggregate LR-gene
+result passes its screening threshold.
 
 Usage:
     python quickstart/run_quickstart.py
@@ -233,13 +233,6 @@ def main():
     out_dir = Path(args.output)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # A previous run may have crossed the aggregate screen. Remove its optional
-    # conditional output so that this run's directory cannot misrepresent which
-    # branches were actually executed.
-    stale_per_pair = out_dir / "per_pair_sldsc.csv"
-    if stale_per_pair.exists():
-        stale_per_pair.unlink()
-
     print("=" * 60)
     print("EdgeMap Quickstart")
     print("=" * 60)
@@ -257,7 +250,9 @@ def main():
 
     print("\n[B] Generating synthetic GWAS summary statistics...")
     t0 = time.time()
-    sumstats = make_demo_gwas(resource_dir=resource_dir, seed=args.seed + 1)
+    # Keep ST and GWAS streams reproducible but independent. The maintained
+    # offset yields a non-positive aggregate screen for the default smoke test.
+    sumstats = make_demo_gwas(resource_dir=resource_dir, seed=args.seed + 2)
     gwas_path = out_dir / "demo_gwas.tsv"
     sumstats.to_csv(gwas_path, sep="\t", index=False)
     print(f"    {len(sumstats):,} SNPs, N=50,000")
@@ -289,9 +284,9 @@ def main():
     print("QUICKSTART COMPLETE")
     print("=" * 60)
     print(f"\nOutput files in {out_dir}/:")
-    print(f"  demo_visium.h5ad      Synthetic spatial transcriptomics data")
-    print(f"  demo_gwas.tsv         Synthetic GWAS summary statistics")
-    print(f"  results.json          Pipeline results (tau, z, p-values)")
+    print("  demo_visium.h5ad      Synthetic spatial transcriptomics data")
+    print("  demo_gwas.tsv         Synthetic GWAS summary statistics")
+    print("  results.json          Pipeline results (tau, z, p-values)")
     print("  lr_pair_stats.json    Spatial statistics for active LR contexts")
     per_pair_output = out_dir / "per_pair_sldsc.csv"
     if per_pair_output.exists():

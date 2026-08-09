@@ -1,46 +1,55 @@
 {
+  "edgemap_version": "0.3.0",
   "gwas_label": "demo_trait",
-  "st_data": "/Users/apple/Research/EdgeMap/quickstart/output/demo_visium.h5ad",
+  "st_data": "quickstart/output/demo_visium.h5ad",
   "params": {
     "k_spatial": 6,
     "dis_thr": 300.0,
+    "min_cells_per_gene": 10,
+    "min_lr_cell_pct": 0.05,
+    "input_scale": "raw_counts",
     "edge_agg_percentile": 95.0,
     "edge_agg_method": "max",
+    "node_agg_percentile": 100.0,
     "kernel_bandwidth_frac": 0.3333333333333333,
     "gene_chunk_size_requested": null,
     "gene_chunk_size_resolved": 2000,
+    "n_blocks": 200,
+    "chisq_max_factor": 0.001,
+    "chisq_max_floor": 80.0,
     "run_context_ranking": false
   },
   "n_genes": 200,
   "n_lr_pairs_active": 62,
-  "node_edge_spearman": 0.13487539426399925,
+  "n_lr_pairs_scored": 62,
+  "node_edge_spearman": 0.02075530318620661,
   "annotation_diagnostics": {
     "n_node_genes": 69,
     "n_edge_genes": 69,
     "n_both_genes": 69,
-    "gene_corr": 0.08898557695929622,
-    "snp_corr": 0.9992854567951187
+    "gene_corr": 0.029543699512051942,
+    "snp_corr": 0.9988266291341533
   },
   "regression": {
-    "n_snps": 1183576,
+    "n_snps": 1183580,
     "N_bar": 50000.0,
     "M_total": 9755134.0,
     "ell_node": {
-      "tau": -1.5720414480349405e-07,
-      "se": 9.767822095946651e-08,
-      "z": -1.6094083538717294,
-      "p_twosided": 0.10752707981412948,
-      "p_onesided": 0.9462364600929353
+      "tau": 2.9140572504299454e-08,
+      "se": 9.997327408626093e-08,
+      "z": 0.2914836267056314,
+      "p_twosided": 0.7706814644904945,
+      "p_onesided": 0.38534073224524723
     },
     "ell_edge": {
-      "tau": 1.1668440569902442e-07,
-      "se": 7.268187519720583e-08,
-      "z": 1.605412702718906,
-      "p_twosided": 0.10840301073864295,
-      "p_onesided": 0.05420150536932147
+      "tau": -1.5951212233657013e-08,
+      "se": 6.981904915630343e-08,
+      "z": -0.22846504537675874,
+      "p_twosided": 0.8192847273123857,
+      "p_onesided": 0.5903576363438072
     },
-    "intercept": 1.1573586098087665
+    "intercept": 1.1543978262658066
   },
   "edge_significant": false,
-  "total_time_s": 3.6
+  "total_time_s": 11.4
 }

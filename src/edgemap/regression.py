@@ -15,9 +15,11 @@ Weights: w_s = 1 / (2 · E[χ²_s]² · w_ld_s)
 Standard errors: delete-one-block jackknife over ~200 LD blocks.
 """
 
+import warnings
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
-from pathlib import Path
 from scipy.stats import norm
 
 from .config import RegressionConfig, resolve_resource_dir
@@ -25,6 +27,8 @@ from .config import RegressionConfig, resolve_resource_dir
 
 _baseline_cache: dict[str, tuple[pd.DataFrame, float]] = {}
 _regression_weight_cache: dict[str, pd.DataFrame] = {}
+_MAX_CONDITION_NUMBER = 100_000.0
+_IRLS_UPDATES = 2
 
 
 def _get_cached_baseline(
@@ -116,7 +120,9 @@ def load_sumstats(path: str, cfg: RegressionConfig) -> pd.DataFrame:
     if missing:
         raise ValueError(f"Sumstats missing columns: {missing}. Found: {list(ss.columns)}")
 
-    ss = ss.dropna(subset=["Z", "N"])
+    ss["Z"] = pd.to_numeric(ss["Z"], errors="coerce")
+    ss["N"] = pd.to_numeric(ss["N"], errors="coerce")
+    ss = ss.dropna(subset=["SNP", "Z", "N"])
     ss = ss[np.isfinite(ss["Z"]) & np.isfinite(ss["N"]) & (ss["N"] > 0)]
     if len(ss) == 0:
         raise ValueError("No valid SNPs remain after filtering invalid Z/N values.")
@@ -124,24 +130,144 @@ def load_sumstats(path: str, cfg: RegressionConfig) -> pd.DataFrame:
     ss = ss[ss["Z"] ** 2 < chisq_max]
     if len(ss) == 0:
         raise ValueError("No valid SNPs remain after chi-squared filtering.")
-    return ss[["SNP", "Z", "N"]].drop_duplicates("SNP")
+    if ss["SNP"].duplicated().any():
+        n_duplicates = int(ss["SNP"].duplicated(keep=False).sum())
+        raise ValueError(
+            f"Sumstats contains {n_duplicates} rows with duplicate SNP "
+            "identifiers; provide one unambiguous row per SNP"
+        )
+    return ss[["SNP", "Z", "N"]].reset_index(drop=True)
 
 
 def _sldsc_weights(
     y: np.ndarray,
     baseline_ld: np.ndarray,
     w_ld_vals: np.ndarray,
-    N_bar: float,
+    N: np.ndarray | float,
     M_total: float,
+    *,
+    h2: float | None = None,
+    intercept: float = 1.0,
 ) -> np.ndarray:
     """S-LDSC regression weights: heteroscedasticity × LD correction.
 
     w_s = 1 / (2 · E[χ²_s]² · w_ld_s)
     """
+    y = np.asarray(y, dtype=np.float64)
+    baseline_ld = np.asarray(baseline_ld, dtype=np.float64)
+    w_ld_vals = np.asarray(w_ld_vals, dtype=np.float64)
+    if y.ndim != 1 or not np.all(np.isfinite(y)) or np.any(y < 0):
+        raise ValueError("S-LDSC response must be a finite, non-negative vector")
+    if baseline_ld.ndim != 2 or baseline_ld.shape[0] != len(y):
+        raise ValueError("baseline_ld must be a 2D matrix aligned with y")
+    if not np.all(np.isfinite(baseline_ld)):
+        raise ValueError("Baseline LD scores must be finite")
+    if w_ld_vals.shape != y.shape:
+        raise ValueError("Regression LD weights must align with y")
+    try:
+        N = np.broadcast_to(np.asarray(N, dtype=np.float64), y.shape)
+    except ValueError as exc:
+        raise ValueError("Per-SNP sample sizes must align with y") from exc
+    if M_total <= 0 or not np.isfinite(M_total):
+        raise ValueError("M_total must be finite and > 0")
+    if np.any(N <= 0) or not np.all(np.isfinite(N)):
+        raise ValueError("Per-SNP sample sizes must be finite and > 0")
+    if np.any(w_ld_vals <= 0) or not np.all(np.isfinite(w_ld_vals)):
+        raise ValueError("Regression LD weights must be finite and > 0")
+
     x_tot = baseline_ld.sum(axis=1)
-    h2_init = np.clip((y.mean() - 1) * M_total / (N_bar * x_tot.mean()), 0.01, 1.0)
-    Ey = 1.0 + np.clip(h2_init * N_bar / M_total * x_tot, 0, 1e4)
-    return 1.0 / (2.0 * Ey**2 * w_ld_vals)
+    if h2 is None:
+        denominator = float(np.mean(N * x_tot))
+        if denominator <= 0 or not np.isfinite(denominator):
+            raise ValueError("Total baseline LD score must have a positive finite mean")
+        h2 = M_total * (float(y.mean()) - 1.0) / denominator
+    if not np.isfinite(h2):
+        raise ValueError("S-LDSC weighting heritability must be finite")
+    h2 = float(np.clip(h2, 0.0, 1.0))
+    intercept = float(intercept)
+    if not np.isfinite(intercept):
+        raise ValueError("S-LDSC weighting intercept must be finite")
+    expected_chisq = intercept + h2 * N / M_total * np.maximum(x_tot, 1.0)
+    if not np.all(np.isfinite(expected_chisq)):
+        raise ValueError("Expected chi-squared values are non-finite")
+    expected_magnitude = np.maximum(
+        np.abs(expected_chisq), np.finfo(np.float64).eps,
+    )
+    return 1.0 / (2.0 * expected_magnitude**2 * w_ld_vals)
+
+
+def _solve_identifiable(
+    X: np.ndarray,
+    y: np.ndarray,
+    *,
+    context: str,
+) -> np.ndarray:
+    """Solve a full-rank, well-conditioned least-squares problem."""
+    X = np.asarray(X, dtype=np.float64)
+    y = np.asarray(y, dtype=np.float64)
+    if X.ndim != 2 or y.ndim != 1 or X.shape[0] != y.shape[0]:
+        raise ValueError(f"Invalid regression shapes in {context}")
+    if X.shape[0] < X.shape[1]:
+        raise ValueError(
+            f"Regression design is underdetermined in {context}: "
+            f"{X.shape[0]} rows for {X.shape[1]} coefficients"
+        )
+    if not np.all(np.isfinite(X)) or not np.all(np.isfinite(y)):
+        raise ValueError(f"Regression inputs contain non-finite values in {context}")
+
+    column_scale = np.linalg.norm(X, axis=0)
+    if np.any(column_scale <= 0) or not np.all(np.isfinite(column_scale)):
+        raise ValueError(f"Regression design is rank-deficient in {context}")
+    X_normalized = X / column_scale
+
+    beta_normalized, _, rank, singular_values = np.linalg.lstsq(
+        X_normalized, y, rcond=None,
+    )
+    if rank != X.shape[1] or len(singular_values) == 0 or singular_values[-1] <= 0:
+        raise ValueError(f"Regression design is rank-deficient in {context}")
+    condition_number = float(singular_values[0] / singular_values[-1])
+    if not np.isfinite(condition_number) or condition_number > _MAX_CONDITION_NUMBER:
+        raise ValueError(
+            f"Regression design is ill-conditioned in {context} "
+            f"(condition number {condition_number:.3g} > {_MAX_CONDITION_NUMBER:.3g}); "
+            "the requested conditional coefficients are not stably identifiable"
+        )
+    return beta_normalized / column_scale
+
+
+def _iterative_sldsc_weights(
+    y: np.ndarray,
+    baseline_ld: np.ndarray,
+    w_ld_vals: np.ndarray,
+    N: np.ndarray,
+    M_total: float,
+) -> np.ndarray:
+    """Estimate standard S-LDSC weights with two aggregate IRLS updates."""
+    Nbar = float(np.mean(N))
+    if not np.isfinite(Nbar) or Nbar <= 0:
+        raise ValueError("Mean sample size must be finite and > 0")
+    x_tot = np.asarray(baseline_ld, dtype=np.float64).sum(axis=1)
+    aggregate_design = np.column_stack([N / Nbar * x_tot, np.ones(len(y))])
+    weights = _sldsc_weights(y, baseline_ld, w_ld_vals, N, M_total)
+
+    for _ in range(_IRLS_UPDATES):
+        sqrtw = np.sqrt(weights)
+        beta = _solve_identifiable(
+            aggregate_design * sqrtw[:, None],
+            y * sqrtw,
+            context="aggregate S-LDSC weight model",
+        )
+        h2 = M_total * float(beta[0]) / Nbar
+        weights = _sldsc_weights(
+            y,
+            baseline_ld,
+            w_ld_vals,
+            N,
+            M_total,
+            h2=h2,
+            intercept=float(beta[1]),
+        )
+    return weights
 
 
 def _is_positive_scalar_multiple(
@@ -200,6 +326,66 @@ def _order_genomically(df: pd.DataFrame, baseline: pd.DataFrame) -> pd.DataFrame
               .reset_index(drop=True))
 
 
+def _merge_regression_inputs(
+    sumstats: pd.DataFrame,
+    baseline: pd.DataFrame,
+    annotations: pd.DataFrame,
+    annotation_cols: list[str],
+    w_ld: pd.DataFrame,
+) -> pd.DataFrame:
+    """Perform a validated one-to-one SNP merge in genomic order."""
+    frames = {
+        "sumstats": sumstats,
+        "baseline": baseline,
+        "annotations": annotations,
+        "regression weights": w_ld,
+    }
+    for label, frame in frames.items():
+        if not frame.columns.is_unique:
+            raise ValueError(f"{label} contains duplicate column names")
+        if "SNP" not in frame.columns:
+            raise ValueError(f"{label} is missing the SNP column")
+        if frame["SNP"].duplicated().any():
+            raise ValueError(f"{label} contains duplicate SNP identifiers")
+
+    baseline_cols = [c for c in baseline.columns if c != "SNP"]
+    if not baseline_cols:
+        raise ValueError("baseline must provide at least one LD-score column")
+    missing_annotations = [c for c in annotation_cols if c not in annotations]
+    if missing_annotations:
+        raise ValueError(
+            f"annotations is missing requested columns: {missing_annotations}"
+        )
+    if "L2" not in w_ld:
+        raise ValueError("regression weights is missing the L2 column")
+    overlap = set(baseline_cols) & set(annotation_cols)
+    if overlap:
+        raise ValueError(
+            f"Baseline and custom annotation names overlap: {sorted(overlap)}"
+        )
+    if len(annotation_cols) != len(set(annotation_cols)):
+        raise ValueError("annotation column names must be unique")
+
+    df = (
+        sumstats
+        .merge(baseline, on="SNP", how="inner", validate="one_to_one")
+        .merge(
+            annotations[["SNP"] + annotation_cols],
+            on="SNP",
+            how="inner",
+            validate="one_to_one",
+        )
+        .merge(
+            w_ld[["SNP", "L2"]],
+            on="SNP",
+            how="inner",
+            validate="one_to_one",
+        )
+        .rename(columns={"L2": "w_ld"})
+    )
+    return _order_genomically(df, baseline)
+
+
 def _block_jackknife(
     Xw: np.ndarray, yw: np.ndarray, n_blocks: int,
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -212,40 +398,67 @@ def _block_jackknife(
     by subtracting the block's contribution — O(p³) per block instead of
     O(n·p²) for a full re-regression.
 
-    Uses np.array_split for even block distribution when n is not
-    divisible by n_blocks.
+    Uses LDSC-compatible floor-spaced separators when n is not divisible by
+    n_blocks.
     """
-    if n_blocks <= 0:
-        raise ValueError("n_blocks must be > 0")
+    Xw = np.asarray(Xw, dtype=np.float64)
+    yw = np.asarray(yw, dtype=np.float64)
+    if Xw.ndim != 2 or yw.ndim != 1 or Xw.shape[0] != yw.shape[0]:
+        raise ValueError("Invalid weighted-regression shapes for block jackknife")
+    if n_blocks < 2:
+        raise ValueError("n_blocks must be >= 2")
     n, p = Xw.shape
-    n_blocks = min(n_blocks, n)
+    if n_blocks > n:
+        raise ValueError(
+            f"n_blocks ({n_blocks}) cannot exceed the number of SNPs ({n})"
+        )
 
-    # Full regression via normal equations
-    XtX = Xw.T @ Xw
-    Xty = Xw.T @ yw
-    try:
-        beta_hat = np.linalg.solve(XtX, Xty)
-    except np.linalg.LinAlgError:
-        beta_hat = np.linalg.lstsq(Xw, yw, rcond=None)[0]
+    # Unit-norm columns keep the fast Gram-matrix subtraction stable and make
+    # the condition threshold describe predictor geometry rather than units.
+    column_scale = np.linalg.norm(Xw, axis=0)
+    if np.any(column_scale <= 0) or not np.all(np.isfinite(column_scale)):
+        raise ValueError("Regression design is rank-deficient in full S-LDSC model")
+    X_unit = Xw / column_scale
+    beta_hat_unit = _solve_identifiable(
+        X_unit, yw, context="full S-LDSC model",
+    )
+    XtX = X_unit.T @ X_unit
+    Xty = X_unit.T @ yw
 
     # Block-level contributions
-    blocks = np.array_split(np.arange(n), n_blocks)
+    # Match LDSC's approximately equal contiguous genomic blocks exactly.
+    separators = np.floor(np.linspace(0, n, n_blocks + 1)).astype(int)
+    blocks = [np.arange(separators[b], separators[b + 1]) for b in range(n_blocks)]
     beta_delete = np.zeros((n_blocks, p))
     for b, idx in enumerate(blocks):
-        Xb = Xw[idx]
+        Xb = X_unit[idx]
         yb = yw[idx]
         XtX_del = XtX - Xb.T @ Xb
         Xty_del = Xty - Xb.T @ yb
-        try:
-            beta_delete[b] = np.linalg.solve(XtX_del, Xty_del)
-        except np.linalg.LinAlgError:
-            mask = np.ones(n, dtype=bool)
-            mask[idx] = False
-            beta_delete[b] = np.linalg.lstsq(Xw[mask], yw[mask], rcond=None)[0]
+        if n - len(idx) < p:
+            raise ValueError(
+                "A delete-block regression is underdetermined; use fewer "
+                "jackknife blocks or more SNPs"
+            )
+        eigenvalues, eigenvectors = np.linalg.eigh(XtX_del)
+        if eigenvalues[0] <= 0:
+            raise ValueError(
+                f"Regression design becomes rank-deficient after deleting block {b}"
+            )
+        delete_condition = float(np.sqrt(eigenvalues[-1] / eigenvalues[0]))
+        if delete_condition > _MAX_CONDITION_NUMBER:
+            raise ValueError(
+                f"Regression design becomes ill-conditioned after deleting block {b} "
+                f"(condition number {delete_condition:.3g})"
+            )
+        beta_delete[b] = eigenvectors @ (
+            (eigenvectors.T @ Xty_del) / eigenvalues
+        )
 
     # Pseudovalues → estimate and SE
-    pseudo = n_blocks * beta_hat[None, :] - (n_blocks - 1) * beta_delete
-    se = np.sqrt(np.var(pseudo, axis=0) / n_blocks)
+    pseudo = n_blocks * beta_hat_unit[None, :] - (n_blocks - 1) * beta_delete
+    beta_hat = beta_hat_unit / column_scale
+    se = np.sqrt(np.var(pseudo, axis=0, ddof=1) / n_blocks) / column_scale
 
     return beta_hat, se
 
@@ -265,14 +478,13 @@ def run_sldsc_custom(
     if not annot_cols:
         raise ValueError("annot_ld must provide at least one annotation column")
 
-    df = (
-        sumstats
-        .merge(baseline, on="SNP", how="inner")
-        .merge(annot_ld[["SNP"] + annot_cols], on="SNP", how="inner")
-        .merge(w_ld[["SNP", "L2"]], on="SNP", how="inner")
-        .rename(columns={"L2": "w_ld"})
+    df = _merge_regression_inputs(
+        sumstats,
+        baseline,
+        annot_ld,
+        annot_cols,
+        w_ld,
     )
-    df = _order_genomically(df, baseline)
     n_snps = len(df)
     if n_snps == 0:
         raise ValueError("No SNPs remain after merging sumstats, baseline, annotations, and weights.")
@@ -284,10 +496,12 @@ def run_sldsc_custom(
     baseline_cols = [c for c in baseline.columns if c != "SNP"]
     all_annot = baseline_cols + annot_cols
     ell_arrays = [df[c].values.astype(np.float64) for c in all_annot]
-    X = np.column_stack([N * ell for ell in ell_arrays] + [np.ones(n_snps)])
+    X = np.column_stack([N / Nbar * ell for ell in ell_arrays] + [np.ones(n_snps)])
 
     w_ld_vals = np.maximum(df["w_ld"].values, 1.0)
-    w = _sldsc_weights(y, df[baseline_cols].values, w_ld_vals, Nbar, M_total)
+    w = _iterative_sldsc_weights(
+        y, df[baseline_cols].values, w_ld_vals, N, M_total,
+    )
 
     sqrtw = np.sqrt(w)
     Xw = X * sqrtw[:, None]
@@ -297,9 +511,11 @@ def run_sldsc_custom(
 
     results = {"n_snps": n_snps, "N_bar": float(Nbar), "M_total": float(M_total)}
     for i, name in enumerate(all_annot):
-        tau = float(beta_hat[i])
-        se = float(jk_se[i])
-        z = tau / se if se > 1e-15 else 0.0
+        tau = float(beta_hat[i] / Nbar)
+        se = float(jk_se[i] / Nbar)
+        if not np.isfinite(se) or se <= 0:
+            raise ValueError(f"Non-positive jackknife standard error for {name!r}")
+        z = tau / se
         results[name] = {
             "tau": tau, "se": se, "z": z,
             "p_twosided": float(2 * norm.sf(abs(z))),
@@ -350,17 +566,16 @@ def run_per_pair_ldsc_custom(
     if not control_cols:
         raise ValueError("annot_ld_controls must contain at least one control annotation")
 
-    df_base = (
-        sumstats
-        .merge(baseline, on="SNP", how="inner")
-        .merge(annot_ld_controls[["SNP"] + control_cols], on="SNP", how="inner")
-        .merge(w_ld[["SNP", "L2"]], on="SNP", how="inner")
-        .rename(columns={"L2": "w_ld"})
+    df_base = _merge_regression_inputs(
+        sumstats,
+        baseline,
+        annot_ld_controls,
+        control_cols,
+        w_ld,
     )
-    # Order before snp_idx is derived: the pair annotations are indexed through
-    # snp_idx, so the two must describe the same row order.
-    df_base = _order_genomically(df_base, baseline)
 
+    if len(snp_names) != len(set(snp_names)):
+        raise ValueError("snp_names contains duplicate SNP identifiers")
     snp_to_idx = {s: i for i, s in enumerate(snp_names)}
     df_snp_indices = df_base["SNP"].map(snp_to_idx)
     valid = df_snp_indices.notna()
@@ -380,18 +595,27 @@ def run_per_pair_ldsc_custom(
     control_arrays = [df_base[c].values.astype(np.float64) for c in control_cols]
     w_ld_vals = np.maximum(df_base["w_ld"].values, 1.0)
 
-    w = _sldsc_weights(y, baseline_ld, w_ld_vals, Nbar, M_total)
+    w = _iterative_sldsc_weights(y, baseline_ld, w_ld_vals, N, M_total)
     sqrtw = np.sqrt(w)
     yw = y * sqrtw
 
     X_base = np.column_stack(
-        [N * baseline_ld[:, i] for i in range(baseline_ld.shape[1])]
-        + [N * arr for arr in control_arrays]
+        [N / Nbar * baseline_ld[:, i] for i in range(baseline_ld.shape[1])]
+        + [N / Nbar * arr for arr in control_arrays]
         + [np.ones(n_snps)]
     )
 
     results = []
+    skipped_unidentifiable: dict[str, str] = {}
     for pname, pair_ell_full in pair_ld_scores.items():
+        pair_ell_full = np.asarray(pair_ell_full, dtype=np.float64)
+        if pair_ell_full.ndim != 1 or len(pair_ell_full) != len(snp_names):
+            raise ValueError(
+                f"LR-context LD scores for {pname!r} must be a vector aligned "
+                "with snp_names"
+            )
+        if not np.all(np.isfinite(pair_ell_full)):
+            raise ValueError(f"LR-context LD scores for {pname!r} are non-finite")
         pair_ell = pair_ell_full[snp_idx]
         if pair_ell.max() <= 0:
             continue
@@ -399,7 +623,19 @@ def run_per_pair_ldsc_custom(
         # Build: baseline + controls [+ non-collinear alternative] + context + intercept.
         extra_cols = []
         if pair_membership_ld_scores is not None and pname in pair_membership_ld_scores:
-            membership_ell = pair_membership_ld_scores[pname][snp_idx]
+            membership_full = np.asarray(
+                pair_membership_ld_scores[pname], dtype=np.float64
+            )
+            if membership_full.ndim != 1 or len(membership_full) != len(snp_names):
+                raise ValueError(
+                    f"Membership LD scores for {pname!r} must be a vector "
+                    "aligned with snp_names"
+                )
+            if not np.all(np.isfinite(membership_full)):
+                raise ValueError(
+                    f"Membership LD scores for {pname!r} are non-finite"
+                )
+            membership_ell = membership_full[snp_idx]
             if _is_positive_scalar_multiple(pair_ell, membership_ell):
                 raise ValueError(
                     "Cannot include both the score-scaled LR-context annotation "
@@ -407,24 +643,39 @@ def run_per_pair_ldsc_custom(
                     "they are positive scalar multiples, so separate pair identity "
                     "or communication effects are not identifiable."
                 )
-            extra_cols.append(N * membership_ell)
+            extra_cols.append(N / Nbar * membership_ell)
 
         X = np.column_stack(
             [X_base[:, :-1]]
             + extra_cols
-            + [N * pair_ell, X_base[:, -1:]]
+            + [N / Nbar * pair_ell, X_base[:, -1:]]
         )
         Xw = X * sqrtw[:, None]
-        beta_hat, jk_se = _block_jackknife(Xw, yw, cfg.n_blocks)
-
-        tau = float(beta_hat[-2])
-        se = float(jk_se[-2])
-        z = tau / se if se > 1e-15 else 0.0
+        try:
+            beta_hat, jk_se = _block_jackknife(Xw, yw, cfg.n_blocks)
+            tau = float(beta_hat[-2] / Nbar)
+            se = float(jk_se[-2] / Nbar)
+            if not np.isfinite(se) or se <= 0:
+                raise ValueError("non-positive jackknife standard error")
+        except ValueError as exc:
+            # A sparse context can lose all identifying variation when one LD
+            # block is deleted. That context has no valid jackknife ranking,
+            # but it should not invalidate other independently fitted contexts.
+            skipped_unidentifiable[pname] = str(exc)
+            continue
+        z = tau / se
         results.append({"pair": pname, "tau": tau, "se": se, "z": z})
 
-    df_results = pd.DataFrame(results)
+    df_results = pd.DataFrame(results, columns=["pair", "tau", "se", "z"])
     if len(df_results) > 0:
         df_results = df_results.sort_values("z", ascending=False).reset_index(drop=True)
+    df_results.attrs["skipped_unidentifiable"] = skipped_unidentifiable
+    if skipped_unidentifiable:
+        warnings.warn(
+            f"Skipped {len(skipped_unidentifiable)} LR contexts whose conditional "
+            "coefficients were not identifiable in every jackknife replicate.",
+            RuntimeWarning,
+        )
     return df_results
 
 

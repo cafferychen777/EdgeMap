@@ -32,8 +32,25 @@ def main():
     parser.add_argument("--gene-chunk-size", type=int, default=None,
                         help="Genes per node-score chunk "
                              "(default: auto-scale by cell count)")
-    parser.add_argument("--preprocessed", action="store_true",
-                        help="Skip normalization (data already log1p-normalized)")
+    parser.add_argument(
+        "--min-lr-cell-pct",
+        type=float,
+        default=0.05,
+        help="Minimum expressing-cell fraction for every LR subunit "
+             "(default: 0.05)",
+    )
+    scale_group = parser.add_mutually_exclusive_group()
+    scale_group.add_argument(
+        "--input-scale",
+        choices=("raw_counts", "log1p"),
+        default=None,
+        help="Declared expression scale (default: raw_counts)",
+    )
+    scale_group.add_argument(
+        "--preprocessed",
+        action="store_true",
+        help="Deprecated alias for --input-scale log1p",
+    )
     parser.add_argument(
         "--rank-contexts",
         action="store_true",
@@ -53,7 +70,9 @@ def main():
         spatial=SpatialConfig(
             k_spatial=args.k_spatial,
             dis_thr=args.dis_thr,
+            min_lr_cell_pct=args.min_lr_cell_pct,
             preprocessed=args.preprocessed,
+            input_scale=args.input_scale,
         ),
         score=ScoreConfig(gene_chunk_size=args.gene_chunk_size),
         regression=RegressionConfig(n_blocks=args.n_blocks),

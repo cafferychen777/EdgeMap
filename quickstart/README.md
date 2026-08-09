@@ -40,7 +40,7 @@ Or with explicit resource path:
 python quickstart/run_quickstart.py --resource-dir /path/to/gsMap_resource
 ```
 
-The maintained fixed-seed example takes approximately 4 seconds for the
+The maintained fixed-seed example takes approximately 12 seconds for the
 reported EdgeMap computation on our test machine after the resource directory
 is installed; dependency acquisition, Python startup, and file generation add
 machine-dependent overhead. All output is written to `quickstart/output/`.
@@ -55,8 +55,8 @@ machine-dependent overhead. All output is written to `quickstart/output/`.
    with random Z-scores mimicking a moderately polygenic trait.
 
 3. **Runs the aggregate EdgeMap path**:
-   - Loads ST data and builds a spatial KNN graph
-   - Computes a spatial LR activity proxy across neighborhoods
+   - Loads ST data and builds a union-symmetrized spatial KNN graph
+   - Computes a degree-normalized spatial LR activity proxy across neighborhoods
    - Computes node scores (expression specificity) and aggregate LR-gene
      scores (`edge` in the output schema) for each gene
    - Maps gene-level scores to SNP-level annotation LD scores via the
@@ -81,18 +81,18 @@ The key output is the S-LDSC regression under `"regression"`:
 
 ```
 "ell_node": {                          # Node annotation (expression specificity)
-    "tau": -1.57e-07,                  #   per-SNP heritability contribution
-    "se": 9.77e-08,                    #   jackknife standard error
-    "z": -1.609,                       #   z-score = tau / se
-    "p_onesided": 0.946                #   one-sided p-value (H1: tau > 0)
+    "tau": 2.91e-08,                   #   per-SNP heritability contribution
+    "se": 1.00e-07,                    #   jackknife standard error
+    "z": 0.291,                        #   z-score = tau / se
+    "p_onesided": 0.385                #   one-sided p-value (H1: tau > 0)
 },
 "ell_edge": {                          # Aggregate spatial LR-gene annotation
-    "tau": 1.17e-07,
-    "se": 7.27e-08,
-    "z": 1.605,
-    "p_onesided": 0.054
+    "tau": -1.60e-08,
+    "se": 6.98e-08,
+    "z": -0.228,
+    "p_onesided": 0.590
 },
-"intercept": 1.157                     # Expect ~1.0; >>1 suggests confounding
+"intercept": 1.154                     # Expect ~1.0; >>1 suggests confounding
 ```
 
 **tau** is the per-SNP annotation coefficient: how much each additional unit

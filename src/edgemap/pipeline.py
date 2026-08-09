@@ -7,8 +7,12 @@ with consistent d_max filtering applied to both.
 """
 
 import json
+import os
+import tempfile
 import time
+from contextlib import contextmanager
 from dataclasses import replace
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 import anndata as ad
@@ -25,6 +29,36 @@ from .regression import (
     load_baseline, load_regression_weights, load_sumstats,
     run_sldsc, run_per_pair_ldsc,
 )
+
+
+try:
+    _PACKAGE_VERSION = version("edgemap")
+except PackageNotFoundError:
+    _PACKAGE_VERSION = "unknown"
+
+
+@contextmanager
+def _atomic_output_path(target: Path):
+    """Yield a temporary sibling path and atomically replace target on success."""
+    fd, tmp_name = tempfile.mkstemp(
+        dir=target.parent,
+        prefix=f".{target.name}.",
+        suffix=".tmp",
+    )
+    os.close(fd)
+    tmp_path = Path(tmp_name)
+    try:
+        yield tmp_path
+        os.replace(tmp_path, target)
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+
+def _write_json_atomic(value: object, target: Path) -> None:
+    """Serialize JSON without exposing a partially written destination."""
+    with _atomic_output_path(target) as tmp_path:
+        with open(tmp_path, "w") as handle:
+            json.dump(value, handle, indent=2, allow_nan=False)
 
 
 def run(cfg: PipelineConfig, adata: ad.AnnData | None = None) -> dict:
@@ -82,7 +116,10 @@ def run(cfg: PipelineConfig, adata: ad.AnnData | None = None) -> dict:
     print("\n[2/7] Computing spatial LR activity scores...")
     t0 = time.time()
 
-    pairs = load_lr_pairs(adata_work)
+    pairs = load_lr_pairs(
+        adata_work,
+        min_cell_pct=cfg.spatial.min_lr_cell_pct,
+    )
     genes = adata_work.var_names.tolist()
 
     comm, pair_names, pair_genes = compute_communication(
@@ -104,7 +141,7 @@ def run(cfg: PipelineConfig, adata: ad.AnnData | None = None) -> dict:
 
     edge_scores = pd.Series(edge_arr, index=genes)
     print(f"  {(edge_arr > 0).sum()} genes with nonzero LR-gene score, "
-          f"{len(lr_stats)} active LR contexts")
+          f"{len(lr_stats)} contexts with nonzero mean activity")
     print(f"  {time.time() - t0:.1f}s")
 
     # -- Step 4: Node scores (expression specificity) ---------------
@@ -122,7 +159,17 @@ def run(cfg: PipelineConfig, adata: ad.AnnData | None = None) -> dict:
 
     # Diagnostic: node-edge correlation
     both = (node_arr > 0) & (edge_arr > 0)
-    rho = spearmanr(node_arr[both], edge_arr[both]).statistic if both.sum() > 2 else 0.0
+    rho = 0.0
+    if both.sum() > 2:
+        node_both = node_arr[both]
+        edge_both = edge_arr[both]
+        if not (
+            np.all(node_both == node_both[0])
+            or np.all(edge_both == edge_both[0])
+        ):
+            candidate_rho = float(spearmanr(node_both, edge_both).statistic)
+            if np.isfinite(candidate_rho):
+                rho = candidate_rho
     print(f"  Node-Edge Spearman rho: {rho:.3f}")
 
     # -- Step 5: Annotation LD scores --------------------------------
@@ -201,11 +248,19 @@ def run(cfg: PipelineConfig, adata: ad.AnnData | None = None) -> dict:
                 w_ld, M_total, cfg.regression,
             )
             n_tested = len(per_pair_results) if per_pair_results is not None else 0
-            print(f"  Ranked {len(pair_ld)} LR-context gene sets by z-score")
+            n_skipped = len(
+                per_pair_results.attrs.get("skipped_unidentifiable", {})
+            )
+            print(f"  Ranked {n_tested} LR-context gene sets by z-score")
+            if n_skipped:
+                print(f"  Skipped {n_skipped} contexts without an identifiable "
+                      "delete-block coefficient")
             if n_tested > 0:
                 top = per_pair_results.iloc[0]
                 print(f"  Top LR context: {top['pair']} (z={top['z']:.2f})")
             print(f"  {time.time() - t0:.1f}s")
+        else:
+            per_pair_results = pd.DataFrame(columns=["pair", "tau", "se", "z"])
 
     # -- Verdict -----------------------------------------------------
     total_time = time.time() - t_start
@@ -222,20 +277,29 @@ def run(cfg: PipelineConfig, adata: ad.AnnData | None = None) -> dict:
 
     # -- Save --------------------------------------------------------
     output = {
+        "edgemap_version": _PACKAGE_VERSION,
         "gwas_label": cfg.gwas_label,
         "st_data": str(cfg.st_h5ad) if cfg.st_h5ad else "AnnData (in-memory)",
         "params": {
             "k_spatial": cfg.spatial.k_spatial,
             "dis_thr": cfg.spatial.dis_thr,
+            "min_cells_per_gene": cfg.spatial.min_cells_per_gene,
+            "min_lr_cell_pct": cfg.spatial.min_lr_cell_pct,
+            "input_scale": cfg.spatial.resolved_input_scale,
             "edge_agg_percentile": score_cfg.edge_agg_percentile,
             "edge_agg_method": score_cfg.edge_agg_method,
+            "node_agg_percentile": score_cfg.node_agg_percentile,
             "kernel_bandwidth_frac": score_cfg.kernel_bandwidth_frac,
             "gene_chunk_size_requested": cfg.score.gene_chunk_size,
             "gene_chunk_size_resolved": score_cfg.gene_chunk_size,
+            "n_blocks": cfg.regression.n_blocks,
+            "chisq_max_factor": cfg.regression.chisq_max_factor,
+            "chisq_max_floor": cfg.regression.chisq_max_floor,
             "run_context_ranking": cfg.run_context_ranking,
         },
         "n_genes": len(genes),
-        "n_lr_pairs_active": len(lr_stats),
+        "n_lr_pairs_active": len(pairs),
+        "n_lr_pairs_scored": len(lr_stats),
         "node_edge_spearman": float(rho),
         "annotation_diagnostics": annot_diag,
         "regression": {
@@ -246,16 +310,25 @@ def run(cfg: PipelineConfig, adata: ad.AnnData | None = None) -> dict:
         "total_time_s": round(total_time, 1),
     }
 
-    if per_pair_results is not None and len(per_pair_results) > 0:
-        per_pair_results.to_csv(out / "per_pair_sldsc.csv", index=False)
+    per_pair_path = out / "per_pair_sldsc.csv"
+    if per_pair_results is not None:
         output["n_pairs_tested"] = len(per_pair_results)
         output["context_ranking_reason"] = ranking_reason
+        skipped = per_pair_results.attrs.get("skipped_unidentifiable", {})
+        output["n_pairs_skipped_unidentifiable"] = len(skipped)
+        if len(per_pair_results) > 0:
+            with _atomic_output_path(per_pair_path) as tmp_path:
+                per_pair_results.to_csv(tmp_path, index=False)
+        else:
+            per_pair_path.unlink(missing_ok=True)
+    else:
+        # This is a managed output. Removing it prevents a prior run's context
+        # ranking from surviving beside an incompatible new results.json.
+        per_pair_path.unlink(missing_ok=True)
 
-    # Write results.json AFTER all fields are populated
-    with open(out / "results.json", "w") as f:
-        json.dump(output, f, indent=2)
-    with open(out / "lr_pair_stats.json", "w") as f:
-        json.dump(lr_stats, f, indent=2)
+    # Write summaries only after all fields and managed branch outputs agree.
+    _write_json_atomic(output, out / "results.json")
+    _write_json_atomic(lr_stats, out / "lr_pair_stats.json")
 
     # Write results back to user's AnnData if provided
     if adata_input is not None:

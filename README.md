@@ -15,7 +15,7 @@ a molecular interaction.
 
 ## How it works
 
-1. **Spatial LR activity proxy** — Build a Gaussian-weighted spatial neighbor graph (`k=6`) and compute a mass-action-inspired expression proxy for each curated LR label, using a bottleneck rule for multi-subunit complexes. This proxy does not measure binding or signaling flux.
+1. **Spatial LR activity proxy** — Build a union-symmetrized Gaussian KNN graph (`k=6`) and multiply local receptor expression by the row-normalized, Gaussian-weighted mean expression of neighboring ligand. Multi-subunit complexes use a bottleneck rule. Row normalization makes uniform expression a uniform-activity null across graph degrees; cells without any valid neighbor are excluded from LR specificity because their neighboring mean is undefined. The proxy does not measure binding or signaling flux.
 2. **Node and aggregate LR-gene scores** — Quantify where expression is spatially concentrated (**node**) and assign genes a spatially informed aggregate LR score (**edge**, retained as the public field name for compatibility).
 3. **SNP annotation** — Map gene-level scores to SNP-level LD scores using gsMap's pre-computed SNP–gene weight matrix.
 4. **S-LDSC regression** — Regress GWAS chi-squared statistics on baseline + node + aggregate LR-gene annotations to estimate their conditional associations with heritability.
@@ -24,6 +24,12 @@ a molecular interaction.
 Runtime is typically **tens of seconds to a few minutes** per trait–tissue pair, depending on tissue size, the number of active LR pairs, disk I/O, and hardware.
 
 ## Installation
+
+```bash
+pip install edgemap
+```
+
+For an editable source checkout:
 
 ```bash
 git clone https://github.com/cafferychen777/EdgeMap.git
@@ -50,8 +56,9 @@ adata = sc.read_visium("/path/to/spaceranger/outs")
 **From other platforms** (Slide-seq, MERFISH, STARmap, etc.): create an AnnData object with expression in `adata.X` and coordinates in `adata.obsm["spatial"]` (shape `n_cells x 2`).
 
 Requirements:
-- **Raw counts by default** — EdgeMap normalizes and log-transforms the data unless `--preprocessed` is set.
-- **Gene filtering is always applied first** — genes expressed in fewer than 10 cells are removed before the normalization check. `--preprocessed` skips normalization and log1p, but not this filtering step.
+- **Declare the expression scale** — raw counts are the default and are normalized and log-transformed by EdgeMap. For an already log1p-normalized non-negative matrix, pass `--input-scale log1p` or set `SpatialConfig(input_scale="log1p")`. The legacy `--preprocessed` flag remains an alias for this declaration.
+- **Scaled expression is invalid** — negative, z-scored, or otherwise centered values are rejected because the LR proxy converts log1p values back to the natural expression scale before multiplication.
+- **The declared scale is validated before filtering** — after validation, genes expressed in fewer than 10 cells are removed before scoring. Declaring `log1p` skips normalization and log1p, but not gene filtering.
 - **Human gene symbols** — the bundled LIANA Consensus database uses human symbols. For non-human data, convert genes to human orthologs first.
 - For CLI usage, save the AnnData object to `.h5ad` first: `adata.write("my_tissue.h5ad")`
 
@@ -160,7 +167,9 @@ results = edgemap.run(edgemap.PipelineConfig(
 | `--dis-thr` | `spatial.dis_thr` | 3000 | Distance threshold in the same units as `.obsm["spatial"]` |
 | `--n-blocks` | `regression.n_blocks` | 200 | Jackknife blocks for standard errors |
 | `--gene-chunk-size` | `score.gene_chunk_size` | auto | Genes per node-score chunk; useful for memory control on large datasets |
-| `--preprocessed` | `spatial.preprocessed` | off | Skip normalization/log1p when the input is already preprocessed |
+| `--min-lr-cell-pct` | `spatial.min_lr_cell_pct` | 0.05 | Minimum expressing-cell fraction required for every ligand/receptor subunit |
+| `--input-scale` | `spatial.input_scale` | `raw_counts` | Explicit expression scale: `raw_counts` or non-negative `log1p` |
+| `--preprocessed` | `spatial.preprocessed` | off | Deprecated compatibility alias for `--input-scale log1p` |
 | `--rank-contexts` | `run_context_ranking` | off | Force exploratory LR-context constituent-gene ranking even when the aggregate screen is not positive |
 | — | `spatial.min_cells_per_gene` | 10 | Minimum number of cells required for a gene to be retained before scoring |
 
@@ -174,12 +183,14 @@ Primary summary output. The schema is concise but not minimal; the fields below 
 
 | Field | Meaning |
 |-------|---------|
+| `edgemap_version` | Package version that produced the result |
 | `gwas_label` | Trait label used for the run |
 | `st_data` | Input ST source (`.h5ad` path or `AnnData (in-memory)`) |
-| `params.k_spatial`, `params.dis_thr` | Spatial graph settings |
+| `params` | Complete scientific configuration used for spatial filtering/scoring and S-LDSC, including graph, prevalence, percentile, and jackknife settings |
 | `params.gene_chunk_size_requested`, `params.gene_chunk_size_resolved` | Requested and effective node-score chunk size |
 | `n_genes` | Number of genes retained after preprocessing |
-| `n_lr_pairs_active` | Number of active LR pairs in this dataset |
+| `n_lr_pairs_active` | Number of expression-active LR pairs in this dataset |
+| `n_lr_pairs_scored` | Number of active pairs with nonzero mean LR activity available for specificity scoring |
 | `node_edge_spearman` | Spearman correlation between node and edge scores |
 | `annotation_diagnostics` | Gene/SNP mapping diagnostics for the annotation-building step |
 | `regression.ell_node` | Node heritability enrichment: `tau`, `se`, `z`, `p_twosided`, `p_onesided` |
@@ -188,6 +199,7 @@ Primary summary output. The schema is concise but not minimal; the fields below 
 | `regression.n_snps`, `regression.N_bar`, `regression.M_total` | Regression metadata |
 | `edge_significant` | `true` if the aggregate LR-gene annotation has `p_onesided < 0.05` (legacy field name retained for compatibility) |
 | `n_pairs_tested` | Number of LR contexts whose constituent-gene annotations were ranked (present only when generated) |
+| `n_pairs_skipped_unidentifiable` | Candidate contexts omitted because at least one delete-block regression could not identify a stable conditional coefficient |
 | `total_time_s` | End-to-end runtime |
 
 Interpretation: a significantly positive `ell_edge` tau is evidence of a
@@ -233,6 +245,7 @@ Spatial LR activity diagnostics for all active LR contexts.
 | Field | Meaning |
 |-------|---------|
 | `mean_comm` | Mean LR activity proxy across cells |
+| `n_valid_cells` | Number of cells with at least one valid spatial neighbor and therefore a defined LR activity proxy |
 | `n_active_cells` | Number of cells with nonzero LR activity proxy |
 | `pair_score` | Spatial specificity score for that LR context |
 
@@ -256,7 +269,9 @@ every row of the publication manifest has passed its release gate.
 | Error | Fix |
 |-------|-----|
 | `h5ad must contain .obsm['spatial']` | Ensure spatial coordinates are present in the AnnData object |
-| `Expression values look pre-processed` | Provide raw counts, or set `--preprocessed` |
+| `Expression values look pre-processed` | Provide raw counts, or declare `--input-scale log1p` |
+| `Expression matrix contains negative values` | Use non-negative raw counts or log1p expression; do not pass scaled/z-scored `.X` |
+| `Regression design is ill-conditioned` | Remove redundant or nearly collinear annotations; their separate conditional coefficients are not stably identifiable |
 | `gsMap resource directory not found` | Set `EDGEMAP_RESOURCE_DIR` or pass `--resource-dir` |
 | No `per_pair_sldsc.csv` in output | Expected when the aggregate LR-gene screen is not positive |
 

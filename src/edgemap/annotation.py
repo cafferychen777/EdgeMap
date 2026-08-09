@@ -89,11 +89,20 @@ def build_multi_annotation_ldscores(
     W, snp_names, wm_genes = _get_snp_gene_weights(resource_dir)
 
     names = list(gene_scores.keys())
+    if any(not isinstance(name, str) or not name for name in names):
+        raise ValueError("Annotation names must be non-empty strings")
+    for name, scores in gene_scores.items():
+        if not scores.index.is_unique:
+            raise ValueError(f"Gene scores for {name!r} contain duplicate genes")
     gene_matrix = np.column_stack([
         gene_scores[name].reindex(wm_genes, fill_value=0.0).values.astype(np.float64)
         for name in names
     ])
+    if not np.all(np.isfinite(gene_matrix)):
+        raise ValueError("Gene-level annotation scores must be finite")
     ell_matrix = np.asarray(W @ gene_matrix)
+    if not np.all(np.isfinite(ell_matrix)):
+        raise ValueError("SNP-level annotation LD scores are non-finite")
 
     annot_ld = pd.DataFrame({"SNP": snp_names})
     diagnostics = {"annotations": {}}
@@ -182,17 +191,24 @@ def build_per_pair_ldscores(
     n_genes = len(wm_genes)
 
     # Positive scores gate active contexts and retain the historical scale.
-    active_pairs = [
-        pname for pname in pair_names
-        if pair_scores.get(pname, 0.0) > 0
-    ]
+    if len(pair_names) != len(set(pair_names)):
+        raise ValueError("pair_names must be unique")
+    active_pairs = []
+    for pname in pair_names:
+        score = float(pair_scores.get(pname, 0.0))
+        if not np.isfinite(score):
+            raise ValueError(f"Pair score for {pname!r} must be finite")
+        if score > 0:
+            if pname not in pair_genes:
+                raise ValueError(f"pair_genes is missing context {pname!r}")
+            active_pairs.append(pname)
     if not active_pairs:
         return {}, snp_names
 
     # Batch all score-scaled membership vectors into one sparse matmul.
     gene_matrix = np.zeros((n_genes, len(active_pairs)), dtype=np.float64)
     for col, pname in enumerate(active_pairs):
-        score = pair_scores[pname]
+        score = float(pair_scores[pname])
         ligs, recs = pair_genes[pname]
         for g in ligs + recs:
             if g in name2i:
@@ -242,9 +258,13 @@ def build_per_pair_membership_ldscores(
 
     if not pair_names:
         return {}, snp_names
+    if len(pair_names) != len(set(pair_names)):
+        raise ValueError("pair_names must be unique")
 
     gene_matrix = np.zeros((n_genes, len(pair_names)), dtype=np.float64)
     for col, pname in enumerate(pair_names):
+        if pname not in pair_genes:
+            raise ValueError(f"pair_genes is missing context {pname!r}")
         ligs, recs = pair_genes[pname]
         for g in ligs + recs:
             if g in name2i:

@@ -1,312 +1,374 @@
 {
   "LGALS9-PTPRC": {
-    "mean_comm": 9156.685263531926,
+    "mean_comm": 2993.1887162075045,
+    "n_valid_cells": 500,
     "n_active_cells": 383,
-    "pair_score": 3.002403970125601
+    "pair_score": 3.053649945476471
   },
   "LGALS9-MET": {
-    "mean_comm": 9003.120187373604,
+    "mean_comm": 2935.979184732042,
+    "n_valid_cells": 500,
     "n_active_cells": 384,
-    "pair_score": 3.16522905070402
+    "pair_score": 3.1957027009525256
   },
   "LGALS9-CD44": {
-    "mean_comm": 9206.891021974516,
+    "mean_comm": 3019.1220656541836,
+    "n_valid_cells": 500,
     "n_active_cells": 382,
-    "pair_score": 3.3880841185306028
+    "pair_score": 3.166379686262583
   },
   "LGALS9-LRP1": {
-    "mean_comm": 9461.311559942998,
+    "mean_comm": 3092.6581272659123,
+    "n_valid_cells": 500,
     "n_active_cells": 390,
-    "pair_score": 3.1725370594811455
+    "pair_score": 3.15643875715593
   },
   "LGALS9-CD47": {
-    "mean_comm": 9548.618335880321,
+    "mean_comm": 3124.929724349917,
+    "n_valid_cells": 500,
     "n_active_cells": 385,
-    "pair_score": 3.2084849097350845
+    "pair_score": 3.214946409272533
   },
   "LGALS9-PTPRK": {
-    "mean_comm": 9000.312071925886,
+    "mean_comm": 2963.0616742239595,
+    "n_valid_cells": 500,
     "n_active_cells": 376,
-    "pair_score": 3.0382507671962276
+    "pair_score": 3.1066332785011874
   },
   "LGALS9-COLEC12": {
-    "mean_comm": 9772.439813092158,
+    "mean_comm": 3171.3894484665143,
+    "n_valid_cells": 500,
     "n_active_cells": 397,
-    "pair_score": 3.144078068630936
+    "pair_score": 3.125236266606518
   },
   "LGALS9-HAVCR2": {
-    "mean_comm": 9132.150011570971,
+    "mean_comm": 2980.5102336711157,
+    "n_valid_cells": 500,
     "n_active_cells": 383,
-    "pair_score": 3.258377527811926
+    "pair_score": 3.2073994147169227
   },
   "LGALS9-MRC2": {
-    "mean_comm": 9754.82810810717,
+    "mean_comm": 3177.0796226876355,
+    "n_valid_cells": 500,
     "n_active_cells": 395,
-    "pair_score": 3.124370614163901
+    "pair_score": 3.032619376884199
   },
   "DLL1-NOTCH1": {
-    "mean_comm": 8708.334259960619,
+    "mean_comm": 2841.9023331496287,
+    "n_valid_cells": 500,
     "n_active_cells": 388,
-    "pair_score": 3.146986533163631
+    "pair_score": 3.05014919035153
   },
   "DLL1-NOTCH2": {
-    "mean_comm": 9424.561951614322,
+    "mean_comm": 3093.7821246419,
+    "n_valid_cells": 500,
     "n_active_cells": 394,
-    "pair_score": 3.2061465448973405
+    "pair_score": 3.1817805308428486
   },
   "DLL1-NOTCH4": {
-    "mean_comm": 9136.553265573784,
+    "mean_comm": 2988.491468865451,
+    "n_valid_cells": 500,
     "n_active_cells": 391,
-    "pair_score": 3.0865301788356776
+    "pair_score": 2.9741006082566726
   },
   "DLL1-NOTCH3": {
-    "mean_comm": 8826.210164439774,
+    "mean_comm": 2898.1095956869494,
+    "n_valid_cells": 500,
     "n_active_cells": 378,
-    "pair_score": 3.330196947867144
+    "pair_score": 3.4059165694559987
   },
   "PODXL-SELL": {
-    "mean_comm": 9119.657440751906,
+    "mean_comm": 2952.042670870253,
+    "n_valid_cells": 500,
     "n_active_cells": 386,
-    "pair_score": 3.1325252346721335
+    "pair_score": 3.0396766010480576
   },
   "ADGRB1-RTN4R": {
-    "mean_comm": 9242.543211688491,
+    "mean_comm": 3015.3531963336036,
+    "n_valid_cells": 500,
     "n_active_cells": 395,
-    "pair_score": 2.9205415291011345
+    "pair_score": 3.016096320935656
   },
   "ADAM10-TSPAN15": {
-    "mean_comm": 8950.498369021388,
+    "mean_comm": 2920.3919416558583,
+    "n_valid_cells": 500,
     "n_active_cells": 381,
-    "pair_score": 3.149384098877967
+    "pair_score": 3.228812814836208
   },
   "ADAM10-TSPAN12": {
-    "mean_comm": 8956.587201141863,
+    "mean_comm": 2902.215436885848,
+    "n_valid_cells": 500,
     "n_active_cells": 387,
-    "pair_score": 3.1551227484057995
+    "pair_score": 3.2965629219696226
   },
   "ADAM10-MET": {
-    "mean_comm": 8611.901234160234,
+    "mean_comm": 2807.1961280193564,
+    "n_valid_cells": 500,
     "n_active_cells": 383,
-    "pair_score": 3.134563374446229
+    "pair_score": 3.078379487592617
   },
   "ADAM10-IL6R": {
-    "mean_comm": 8739.98960282164,
+    "mean_comm": 2869.821234103416,
+    "n_valid_cells": 500,
     "n_active_cells": 375,
-    "pair_score": 3.2672004681086255
+    "pair_score": 3.4585020901514767
   },
   "ADAM10-CD44": {
-    "mean_comm": 8655.141520655236,
+    "mean_comm": 2841.358242164349,
+    "n_valid_cells": 500,
     "n_active_cells": 381,
-    "pair_score": 3.3403966560206966
+    "pair_score": 3.392366367100071
   },
   "ADAM10-EPHA3": {
-    "mean_comm": 8609.594718162081,
+    "mean_comm": 2811.618579180897,
+    "n_valid_cells": 500,
     "n_active_cells": 384,
-    "pair_score": 3.1774500409007915
+    "pair_score": 3.167734515451514
   },
   "ADAM10-AXL": {
-    "mean_comm": 8562.778886269381,
+    "mean_comm": 2805.091069224002,
+    "n_valid_cells": 500,
     "n_active_cells": 376,
-    "pair_score": 3.2488894615446644
+    "pair_score": 3.2515057759664057
   },
   "ADAM10-NOTCH1": {
-    "mean_comm": 8523.411759154691,
+    "mean_comm": 2779.2067482661473,
+    "n_valid_cells": 500,
     "n_active_cells": 386,
-    "pair_score": 3.0832279687422686
+    "pair_score": 3.0668800566183894
   },
   "ADAM10-NOTCH2": {
-    "mean_comm": 9134.4816292367,
+    "mean_comm": 3001.6929461788495,
+    "n_valid_cells": 500,
     "n_active_cells": 392,
-    "pair_score": 3.3741700991403523
+    "pair_score": 3.246583901429919
   },
   "ADAM10-NRCAM": {
-    "mean_comm": 8726.775501938999,
+    "mean_comm": 2850.834280533646,
+    "n_valid_cells": 500,
     "n_active_cells": 377,
-    "pair_score": 3.3982582090420284
+    "pair_score": 3.504000800630415
   },
   "ADAM10-TSPAN17": {
-    "mean_comm": 8648.735838790572,
+    "mean_comm": 2802.5002278636675,
+    "n_valid_cells": 500,
     "n_active_cells": 388,
-    "pair_score": 2.894256178969854
+    "pair_score": 3.042449400729102
   },
   "ADAM10-TSPAN10": {
-    "mean_comm": 9058.449546111895,
+    "mean_comm": 2955.0183727366225,
+    "n_valid_cells": 500,
     "n_active_cells": 402,
-    "pair_score": 3.1922372584455863
+    "pair_score": 3.2721619451002892
   },
   "ADAM10-TREM2": {
-    "mean_comm": 8342.481523459379,
+    "mean_comm": 2737.428105347699,
+    "n_valid_cells": 500,
     "n_active_cells": 376,
-    "pair_score": 3.36723798136026
+    "pair_score": 3.418740506973428
   },
   "TNFSF11-TNFRSF11B": {
-    "mean_comm": 7939.028021493294,
+    "mean_comm": 2599.777537783112,
+    "n_valid_cells": 500,
     "n_active_cells": 387,
-    "pair_score": 3.2467376972863122
+    "pair_score": 3.2275594787302704
   },
   "TNFSF11-LGR4": {
-    "mean_comm": 8508.051473387755,
+    "mean_comm": 2774.0334755258996,
+    "n_valid_cells": 500,
     "n_active_cells": 394,
-    "pair_score": 3.364772813798968
+    "pair_score": 3.2313734838986927
   },
   "TNFSF11-TNFRSF11A": {
-    "mean_comm": 8412.182126331501,
+    "mean_comm": 2730.509036600773,
+    "n_valid_cells": 500,
     "n_active_cells": 389,
-    "pair_score": 3.104589676282638
+    "pair_score": 3.0427845551253005
   },
   "EREG-ERBB3": {
-    "mean_comm": 8918.755348478808,
+    "mean_comm": 2900.2441167591355,
+    "n_valid_cells": 500,
     "n_active_cells": 387,
-    "pair_score": 2.9744138327489513
+    "pair_score": 3.00644488615935
   },
   "ADAM12-ITGB1": {
-    "mean_comm": 8782.091467636932,
+    "mean_comm": 2865.339036073907,
+    "n_valid_cells": 500,
     "n_active_cells": 386,
-    "pair_score": 3.111931472801082
+    "pair_score": 3.1191883690992097
   },
   "ADAM12-ITGA9": {
-    "mean_comm": 8553.841437984198,
+    "mean_comm": 2769.071001297339,
+    "n_valid_cells": 500,
     "n_active_cells": 378,
-    "pair_score": 3.076733478352218
+    "pair_score": 3.138269297123035
   },
   "TNFSF12-TNFRSF8": {
-    "mean_comm": 8835.00210389803,
+    "mean_comm": 2856.6992704400004,
+    "n_valid_cells": 500,
     "n_active_cells": 379,
-    "pair_score": 3.068326385768817
+    "pair_score": 3.06371393371539
   },
   "TNFSF12-CD163": {
-    "mean_comm": 8734.698386099033,
+    "mean_comm": 2840.829210463248,
+    "n_valid_cells": 500,
     "n_active_cells": 382,
-    "pair_score": 3.2781060234712243
+    "pair_score": 3.1823491599858866
   },
   "TNFSF12-TNFRSF25": {
-    "mean_comm": 9177.376813078039,
+    "mean_comm": 2980.1124200961776,
+    "n_valid_cells": 500,
     "n_active_cells": 385,
-    "pair_score": 3.1911083137871015
+    "pair_score": 3.223919730858273
   },
   "TNFSF12-TNFRSF12A": {
-    "mean_comm": 9076.767204966285,
+    "mean_comm": 2961.598910866378,
+    "n_valid_cells": 500,
     "n_active_cells": 390,
-    "pair_score": 3.1876755801467302
+    "pair_score": 3.1857376691296877
   },
   "TNFSF14-TNFRSF6B": {
-    "mean_comm": 8016.45903746559,
+    "mean_comm": 2615.7129959784456,
+    "n_valid_cells": 500,
     "n_active_cells": 387,
-    "pair_score": 3.180307808395709
+    "pair_score": 2.988844361081453
   },
   "TNFSF14-LTBR": {
-    "mean_comm": 8793.821661494949,
+    "mean_comm": 2868.692453165191,
+    "n_valid_cells": 500,
     "n_active_cells": 394,
-    "pair_score": 3.119574104104528
+    "pair_score": 3.0016556713813927
   },
   "TNFSF14-TNFRSF14": {
-    "mean_comm": 8967.946027341324,
+    "mean_comm": 2925.0311759013466,
+    "n_valid_cells": 500,
     "n_active_cells": 393,
-    "pair_score": 3.2917852142173034
+    "pair_score": 3.1383969445112427
   },
   "ADAM23-ITGB3": {
-    "mean_comm": 8379.362518412277,
+    "mean_comm": 2744.927853769983,
+    "n_valid_cells": 500,
     "n_active_cells": 385,
-    "pair_score": 3.042397020316575
+    "pair_score": 3.1316166900995697
   },
   "ADAM23-ITGA5": {
-    "mean_comm": 7953.9666019713895,
+    "mean_comm": 2595.614223243204,
+    "n_valid_cells": 500,
     "n_active_cells": 375,
-    "pair_score": 3.2531653387516357
+    "pair_score": 3.4146956058180487
   },
   "ADAM23-ITGA4": {
-    "mean_comm": 8032.522960345367,
+    "mean_comm": 2616.9948161767757,
+    "n_valid_cells": 500,
     "n_active_cells": 375,
-    "pair_score": 3.1198140207494225
+    "pair_score": 3.2215744239556807
   },
   "ADAM11-ITGA4": {
-    "mean_comm": 8238.433339069146,
+    "mean_comm": 2669.015649315624,
+    "n_valid_cells": 500,
     "n_active_cells": 364,
-    "pair_score": 3.372368607144908
+    "pair_score": 3.1969637917093814
   },
   "ICOSLG-CD28": {
-    "mean_comm": 9100.289089990069,
+    "mean_comm": 2963.8858563635877,
+    "n_valid_cells": 500,
     "n_active_cells": 381,
-    "pair_score": 3.3418970027376287
+    "pair_score": 3.4305909612022627
   },
   "ICOSLG-CTLA4": {
-    "mean_comm": 8413.16960259258,
+    "mean_comm": 2738.484262474549,
+    "n_valid_cells": 500,
     "n_active_cells": 370,
-    "pair_score": 3.4781156166427842
+    "pair_score": 3.2494954719482267
   },
   "ICOSLG-ICOS": {
-    "mean_comm": 9214.777421014538,
+    "mean_comm": 2993.3954859638047,
+    "n_valid_cells": 500,
     "n_active_cells": 384,
-    "pair_score": 2.9250900446416535
+    "pair_score": 2.948801904022369
   },
   "SEMA7A-PLXNC1": {
-    "mean_comm": 7638.504670929326,
+    "mean_comm": 2470.478739798352,
+    "n_valid_cells": 500,
     "n_active_cells": 360,
-    "pair_score": 3.4524440188135057
+    "pair_score": 3.391494312594034
   },
   "TNFSF13-TNFRSF11B": {
-    "mean_comm": 8837.28294364862,
+    "mean_comm": 2887.010115507066,
+    "n_valid_cells": 500,
     "n_active_cells": 392,
-    "pair_score": 3.0525573643357538
+    "pair_score": 3.128839330623876
   },
   "TNFSF13-TNFRSF13B": {
-    "mean_comm": 8650.395733522628,
+    "mean_comm": 2821.192028396121,
+    "n_valid_cells": 500,
     "n_active_cells": 386,
-    "pair_score": 3.2456373104231107
+    "pair_score": 3.2696086388612344
   },
   "TNFSF13-TNFRSF1A": {
-    "mean_comm": 8988.749960615101,
+    "mean_comm": 2910.4251373125826,
+    "n_valid_cells": 500,
     "n_active_cells": 387,
-    "pair_score": 3.132763987576799
+    "pair_score": 3.0577818832071677
   },
   "TNFSF13-FAS": {
-    "mean_comm": 9484.27440589592,
+    "mean_comm": 3057.24009379393,
+    "n_valid_cells": 500,
     "n_active_cells": 394,
-    "pair_score": 3.0819885614970115
+    "pair_score": 3.1674325027848957
   },
   "TNFSF13-SDC2": {
-    "mean_comm": 8873.542061741753,
+    "mean_comm": 2882.5598345288345,
+    "n_valid_cells": 500,
     "n_active_cells": 376,
-    "pair_score": 3.293979281636137
+    "pair_score": 3.2749147033959924
   },
   "TNFSF13-TNFRSF17": {
-    "mean_comm": 9224.665239828624,
+    "mean_comm": 2992.9645748177895,
+    "n_valid_cells": 500,
     "n_active_cells": 390,
-    "pair_score": 3.194486180450845
+    "pair_score": 3.1836798151551036
   },
   "TNFSF13-TNFRSF14": {
-    "mean_comm": 9377.331579859392,
+    "mean_comm": 3056.5371959463873,
+    "n_valid_cells": 500,
     "n_active_cells": 391,
-    "pair_score": 3.124199787120186
+    "pair_score": 3.148165312520237
   },
   "SLITRK3-PTPRD": {
-    "mean_comm": 8495.45702456299,
+    "mean_comm": 2749.9474479032715,
+    "n_valid_cells": 500,
     "n_active_cells": 391,
-    "pair_score": 3.215169257557968
+    "pair_score": 3.2296820369552686
   },
   "SLITRK3-PTPRS": {
-    "mean_comm": 8260.84328610725,
+    "mean_comm": 2667.0386900145168,
+    "n_valid_cells": 500,
     "n_active_cells": 378,
-    "pair_score": 3.192622612701032
+    "pair_score": 3.1212700516321483
   },
   "SLITRK5-PTPRD": {
-    "mean_comm": 9229.131810191497,
+    "mean_comm": 2995.5327333109153,
+    "n_valid_cells": 500,
     "n_active_cells": 387,
-    "pair_score": 3.039280472684778
+    "pair_score": 3.0085437637626695
   },
   "TNFSF15-TNFRSF6B": {
-    "mean_comm": 8563.684929951009,
+    "mean_comm": 2797.2132106350296,
+    "n_valid_cells": 500,
     "n_active_cells": 379,
-    "pair_score": 2.985685186383669
+    "pair_score": 3.069016147106181
   },
   "TNFSF15-TNFRSF25": {
-    "mean_comm": 9356.7403760117,
+    "mean_comm": 3052.8125715862625,
+    "n_valid_cells": 500,
     "n_active_cells": 383,
-    "pair_score": 3.1592455117913705
+    "pair_score": 3.127894042224856
   },
   "SELL-PODXL": {
-    "mean_comm": 9119.657440751906,
+    "mean_comm": 2954.690682427406,
+    "n_valid_cells": 500,
     "n_active_cells": 398,
-    "pair_score": 2.980168306134769
+    "pair_score": 2.9189693974130893
   }
 }

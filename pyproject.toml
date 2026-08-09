@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "edgemap"
-version = "0.2.0"
+version = "0.3.0"
 description = "Heritability mapping with spatially informed ligand-receptor gene annotations"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -25,6 +25,10 @@ keywords = [
 classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "License :: OSI Approved :: MIT License",
     "Intended Audience :: Science/Research",
     "Topic :: Scientific/Engineering :: Bio-Informatics",
@@ -53,7 +57,7 @@ packages = ["src/edgemap"]
 exclude = [
     "src/edgemap/tests/",
     # These experimental modules are present in some development worktrees but
-    # are not part of the reviewed v0.2 publication API.
+    # are not part of the reviewed public release API.
     "src/edgemap/genetic_response.py",
     "src/edgemap/response.py",
     "src/edgemap/simulation.py",
@@ -69,12 +73,14 @@ include = [
     "pyproject.toml",
 ]
 exclude = [
-    "data",
-    "results",
-    "paper",
-    "scripts",
-    "quickstart",
-    "reproducibility",
+    "/data",
+    "/results",
+    "/paper",
+    "/scripts",
+    "/quickstart",
+    "/reproducibility",
+    "/tmp",
+    "**/node_modules",
     "src/edgemap/tests",
     "src/edgemap/genetic_response.py",
     "src/edgemap/response.py",
