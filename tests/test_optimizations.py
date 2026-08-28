@@ -19,6 +19,14 @@ from edgemap.annotation import build_per_pair_ldscores
 # ── #1: Communication gene column caching ─────────────────────────
 
 
+def _weighted_neighbor_mean(W, values):
+    row_weight = np.asarray(W.sum(axis=1)).ravel()
+    out = np.full_like(values, np.nan, dtype=float)
+    valid = row_weight > 0
+    out[valid] = np.asarray(W @ values).ravel()[valid] / row_weight[valid]
+    return out
+
+
 def test_cached_comm_matches_naive():
     """Cached column extraction produces identical communication values."""
     rng = np.random.RandomState(42)
@@ -54,8 +62,8 @@ def test_cached_comm_matches_naive():
             rec_cols.append(np.expm1(col))
         R_eff = np.minimum.reduce(rec_cols) if len(rec_cols) > 1 else rec_cols[0]
 
-        expected = np.asarray(W @ L_eff).flatten() * R_eff
-        np.testing.assert_allclose(comm[:, pi], expected, rtol=1e-12)
+        expected = _weighted_neighbor_mean(W, L_eff) * R_eff
+        np.testing.assert_allclose(comm[:, pi], expected, rtol=1e-12, equal_nan=True)
 
 
 def test_cached_comm_sparse_vs_dense():

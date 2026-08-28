@@ -63,7 +63,7 @@ def test_shared_subunit_uses_max_not_sum():
 
     # Pair 1: ITGA1-ITGB1, strongly concentrated
     c1 = np.zeros(n)
-    c1[0] = 20.0
+    c1[:2] = 20.0
     # Pair 2: ITGA2-ITGB1, weakly concentrated
     c2 = np.ones(n)
     c2[0] = 4.0
@@ -120,9 +120,9 @@ def test_mean_edge_aggregation_averages_only_spatially_concentrated_pairs():
     """Mean aggregation should average retained pair scores rather than sum them."""
     n = 20
     concentrated_a = np.zeros(n)
-    concentrated_a[0] = 20.0
+    concentrated_a[:2] = 20.0
     concentrated_b = np.zeros(n)
-    concentrated_b[:2] = 10.0
+    concentrated_b[:4] = 10.0
     uniform = np.ones(n)
 
     comm, names, pgenes = _make_comm(

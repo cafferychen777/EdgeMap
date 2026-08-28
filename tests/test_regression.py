@@ -22,28 +22,41 @@ from edgemap.regression import (
 
 
 def _toy_regression_inputs():
+    rng = np.random.default_rng(2026)
+    n_snps = 40
+    snps = [f"rs{i}" for i in range(n_snps)]
+    base1 = rng.uniform(0.1, 1.0, n_snps)
+    base2 = rng.uniform(0.1, 1.0, n_snps)
+    node = rng.uniform(0.0, 0.8, n_snps)
+    edge = rng.uniform(0.0, 0.8, n_snps)
+    sample_size = rng.integers(900, 1100, n_snps).astype(float)
+    chisq = (
+        1.0
+        + sample_size * (2e-4 * base1 + 1e-4 * base2 + 3e-4 * node + 4e-4 * edge)
+        + rng.normal(0.0, 0.03, n_snps)
+    )
     sumstats = pd.DataFrame(
         {
-            "SNP": ["rs1", "rs2", "rs3", "rs4", "rs5"],
-            "Z": [2.0, 1.8, 1.5, 2.2, 1.2],
-            "N": [1000, 1000, 1000, 1000, 1000],
+            "SNP": snps,
+            "Z": np.sqrt(chisq),
+            "N": sample_size,
         }
     )
     baseline = pd.DataFrame(
         {
-            "SNP": ["rs1", "rs2", "rs3", "rs4", "rs5"],
-            "base1": [0.4, 0.2, 0.3, 0.5, 0.1],
-            "base2": [0.1, 0.3, 0.2, 0.2, 0.4],
+            "SNP": snps,
+            "base1": base1,
+            "base2": base2,
         }
     )
     annot_ld = pd.DataFrame(
         {
-            "SNP": ["rs1", "rs2", "rs3", "rs4", "rs5"],
-            "ell_node": [0.2, 0.1, 0.3, 0.4, 0.1],
-            "ell_edge": [0.3, 0.2, 0.1, 0.4, 0.2],
+            "SNP": snps,
+            "ell_node": node,
+            "ell_edge": edge,
         }
     )
-    w_ld = pd.DataFrame({"SNP": ["rs1", "rs2", "rs3", "rs4", "rs5"], "L2": [1.0] * 5})
+    w_ld = pd.DataFrame({"SNP": snps, "L2": rng.uniform(1.0, 2.0, n_snps)})
     return sumstats, baseline, annot_ld, w_ld
 
 
@@ -51,9 +64,9 @@ def test_load_sumstats_validates_and_filters(tmp_path):
     path = tmp_path / "sumstats.tsv"
     df = pd.DataFrame(
         {
-            "SNP": ["rs1", "rs1", "rs2", "rs3", "rs4"],
-            "Z": [2.0, 2.0, np.nan, np.inf, 100.0],
-            "N": [1000, 1000, 1000, 1000, 1000],
+            "SNP": ["rs1", "rs2", "rs3", "rs4"],
+            "Z": [2.0, np.nan, np.inf, 100.0],
+            "N": [1000, 1000, 1000, 1000],
         }
     )
     df.to_csv(path, sep="\t", index=False)
@@ -61,9 +74,19 @@ def test_load_sumstats_validates_and_filters(tmp_path):
     cfg = RegressionConfig(chisq_max_factor=0.001, chisq_max_floor=5.0)
     out = load_sumstats(str(path), cfg)
 
-    # rs4 is removed by chisq threshold (100^2 > 5), rs2/rs3 invalid, rs1 deduplicated.
+    # rs4 is removed by chisq threshold (100^2 > 5); rs2/rs3 are invalid.
     assert list(out["SNP"]) == ["rs1"]
     assert list(out.columns) == ["SNP", "Z", "N"]
+
+
+def test_load_sumstats_rejects_duplicate_snps(tmp_path):
+    path = tmp_path / "duplicate.tsv"
+    pd.DataFrame(
+        {"SNP": ["rs1", "rs1"], "Z": [1.0, 1.1], "N": [1000, 1000]}
+    ).to_csv(path, sep="\t", index=False)
+
+    with pytest.raises(ValueError, match="duplicate SNP"):
+        load_sumstats(str(path), RegressionConfig())
 
 
 def test_load_sumstats_missing_columns_raises(tmp_path):
@@ -87,8 +110,8 @@ def test_load_sumstats_filters_invalid_sample_size(tmp_path):
     assert list(out["SNP"]) == ["rs1"]
 
 
-def test_block_jackknife_handles_singular_matrix():
-    # Collinear columns force XtX singular; function should fall back to lstsq.
+def test_block_jackknife_rejects_singular_matrix():
+    # Collinear annotations do not define separate conditional coefficients.
     Xw = np.array(
         [
             [1.0, 1.0],
@@ -99,24 +122,22 @@ def test_block_jackknife_handles_singular_matrix():
     )
     yw = np.array([1.0, 2.0, 3.0, 4.0])
 
-    beta, se = _block_jackknife(Xw, yw, n_blocks=3)
-    assert beta.shape == (2,)
-    assert se.shape == (2,)
-    assert np.all(np.isfinite(beta))
-    assert np.all(np.isfinite(se))
+    with pytest.raises(ValueError, match="ill-conditioned|rank-deficient"):
+        _block_jackknife(Xw, yw, n_blocks=3)
 
 
 def test_block_jackknife_rejects_nonpositive_blocks():
     Xw = np.array([[1.0, 2.0], [3.0, 4.0]])
     yw = np.array([1.0, 2.0])
 
-    with pytest.raises(ValueError, match="n_blocks must be > 0"):
+    with pytest.raises(ValueError, match="n_blocks must be >= 2"):
         _block_jackknife(Xw, yw, n_blocks=0)
 
 
-def test_regression_config_rejects_nonpositive_blocks():
-    with pytest.raises(ValueError, match="n_blocks must be > 0"):
-        RegressionConfig(n_blocks=0)
+def test_regression_config_rejects_fewer_than_two_blocks():
+    for n_blocks in (0, 1):
+        with pytest.raises(ValueError, match="n_blocks must be >= 2"):
+            RegressionConfig(n_blocks=n_blocks)
 
 
 def test_run_sldsc_returns_expected_structure():
@@ -124,7 +145,7 @@ def test_run_sldsc_returns_expected_structure():
     cfg = RegressionConfig(n_blocks=3)
     out = run_sldsc(sumstats, baseline, annot_ld, w_ld, M_total=1_000_000.0, cfg=cfg)
 
-    assert out["n_snps"] == 5
+    assert out["n_snps"] == 40
     assert "intercept" in out
     for key in ("base1", "base2", "ell_node", "ell_edge"):
         assert key in out
@@ -138,15 +159,15 @@ def test_run_per_pair_ldsc_skips_zero_and_returns_ranking_columns():
     cfg = RegressionConfig(n_blocks=3)
 
     pair_ld = {
-        "pair_active": np.array([0.2, 0.1, 0.4, 0.2, 0.3]),
-        "pair_zero": np.zeros(5),
+        "pair_active": np.linspace(0.1, 0.9, len(sumstats)),
+        "pair_zero": np.zeros(len(sumstats)),
     }
     out = run_per_pair_ldsc(
         sumstats=sumstats,
         baseline=baseline,
         annot_ld_node=annot_ld[["SNP", "ell_node"]],
         pair_ld_scores=pair_ld,
-        snp_names=["rs1", "rs2", "rs3", "rs4", "rs5"],
+        snp_names=baseline["SNP"].tolist(),
         w_ld=w_ld,
         M_total=1_000_000.0,
         cfg=cfg,
@@ -160,7 +181,7 @@ def test_run_per_pair_ldsc_skips_zero_and_returns_ranking_columns():
 def test_run_sldsc_custom_accepts_extra_annotations():
     sumstats, baseline, annot_ld, w_ld = _toy_regression_inputs()
     annot_extra = annot_ld.copy()
-    annot_extra["ell_fibro"] = [0.1, 0.0, 0.2, 0.1, 0.0]
+    annot_extra["ell_fibro"] = np.linspace(0.0, 0.7, len(annot_extra)) ** 2
 
     out = run_sldsc_custom(
         sumstats=sumstats,
@@ -180,15 +201,15 @@ def test_run_sldsc_custom_accepts_extra_annotations():
 def test_run_per_pair_ldsc_custom_accepts_multiple_controls():
     sumstats, baseline, annot_ld, w_ld = _toy_regression_inputs()
     annot_controls = annot_ld[["SNP", "ell_node"]].copy()
-    annot_controls["ell_fibro"] = [0.1, 0.0, 0.2, 0.1, 0.0]
-    pair_ld = {"pair_active": np.array([0.2, 0.1, 0.4, 0.2, 0.3])}
+    annot_controls["ell_fibro"] = np.linspace(0.0, 0.7, len(annot_controls)) ** 2
+    pair_ld = {"pair_active": np.linspace(0.1, 0.9, len(sumstats))}
 
     out = run_per_pair_ldsc_custom(
         sumstats=sumstats,
         baseline=baseline,
         annot_ld_controls=annot_controls,
         pair_ld_scores=pair_ld,
-        snp_names=["rs1", "rs2", "rs3", "rs4", "rs5"],
+        snp_names=baseline["SNP"].tolist(),
         w_ld=w_ld,
         M_total=1_000_000.0,
         cfg=RegressionConfig(n_blocks=3),
@@ -261,7 +282,7 @@ def test_per_pair_z_is_invariant_to_positive_scalar_rescaling():
 
 def test_per_pair_rejects_exact_own_membership_collinearity():
     sumstats, baseline, annot_ld, w_ld = _toy_regression_inputs()
-    membership = np.array([0.2, 0.1, 0.4, 0.2, 0.3])
+    membership = np.linspace(0.1, 0.9, len(sumstats))
 
     with pytest.raises(ValueError, match="positive scalar multiples"):
         run_per_pair_ldsc_custom(
@@ -270,7 +291,7 @@ def test_per_pair_rejects_exact_own_membership_collinearity():
             annot_ld_controls=annot_ld[["SNP", "ell_node"]],
             pair_ld_scores={"L-R": 2.5 * membership},
             pair_membership_ld_scores={"L-R": membership},
-            snp_names=["rs1", "rs2", "rs3", "rs4", "rs5"],
+            snp_names=baseline["SNP"].tolist(),
             w_ld=w_ld,
             M_total=1_000_000.0,
             cfg=RegressionConfig(n_blocks=3),
@@ -401,10 +422,11 @@ def test_run_per_pair_ldsc_aligns_to_snp_index_and_sorts_by_z(monkeypatch):
     cfg = RegressionConfig(n_blocks=3)
 
     # Use extra SNP that is absent in merged base data; should be ignored via snp_idx mapping.
-    snp_names = ["rsX", "rs1", "rs2", "rs3", "rs4", "rs5"]
+    snp_names = ["rsX"] + baseline["SNP"].tolist()
+    n_aligned = len(snp_names)
     pair_ld = {
-        "pair_low": np.array([9.0, 0.1, 0.1, 0.1, 0.1, 0.1]),
-        "pair_high": np.array([9.0, 5.0, 5.0, 5.0, 5.0, 5.0]),
+        "pair_low": np.array([9.0] + [0.1] * (n_aligned - 1)),
+        "pair_high": np.array([9.0] + [5.0] * (n_aligned - 1)),
     }
 
     def fake_block_jackknife(Xw, yw, n_blocks):
@@ -433,7 +455,7 @@ def test_run_per_pair_ldsc_aligns_to_snp_index_and_sorts_by_z(monkeypatch):
     assert out.iloc[0]["z"] > out.iloc[1]["z"]
 
 
-def test_run_sldsc_handles_zero_se_without_inf(monkeypatch):
+def test_run_sldsc_rejects_zero_standard_error(monkeypatch):
     sumstats, baseline, annot_ld, w_ld = _toy_regression_inputs()
     cfg = RegressionConfig(n_blocks=3)
 
@@ -446,11 +468,8 @@ def test_run_sldsc_handles_zero_se_without_inf(monkeypatch):
 
     monkeypatch.setattr("edgemap.regression._block_jackknife", fake_block_jackknife)
 
-    out = run_sldsc(sumstats, baseline, annot_ld, w_ld, M_total=1_000_000.0, cfg=cfg)
-    for key in ("base1", "base2", "ell_node", "ell_edge"):
-        assert out[key]["z"] == 0.0
-        assert out[key]["p_onesided"] == 0.5
-        assert out[key]["p_twosided"] == 1.0
+    with pytest.raises(ValueError, match="Non-positive jackknife standard error"):
+        run_sldsc(sumstats, baseline, annot_ld, w_ld, M_total=1_000_000.0, cfg=cfg)
 
 
 def test_run_sldsc_raises_on_empty_merge():
@@ -464,29 +483,30 @@ def test_run_sldsc_raises_on_empty_merge():
         run_sldsc(sumstats, baseline, annot_ld, w_ld, 1e6, RegressionConfig())
 
 
-def test_block_jackknife_clamps_blocks_to_n():
-    """n_blocks > n should not crash (clamped internally)."""
-    Xw = np.array([[1.0, 2.0], [3.0, 4.0]])
-    yw = np.array([1.0, 2.0])
-    beta, se = _block_jackknife(Xw, yw, n_blocks=100)
-    assert beta.shape == (2,)
-    assert np.all(np.isfinite(beta))
+def test_block_jackknife_rejects_more_blocks_than_snps():
+    """n_blocks cannot exceed the available SNP count."""
+    x = np.arange(8, dtype=float)
+    Xw = np.column_stack([np.ones(8), x])
+    yw = 1.0 + 2.0 * x + np.array([0.1, -0.1] * 4)
+    with pytest.raises(ValueError, match="cannot exceed"):
+        _block_jackknife(Xw, yw, n_blocks=100)
 
 
-def test_sldsc_weights_matches_inline():
-    """Shared _sldsc_weights matches the original inline computation."""
+def test_sldsc_weights_use_per_snp_sample_size():
+    """Expected chi-square and weights use each SNP's own sample size."""
     rng = np.random.RandomState(42)
     y = rng.rand(50) * 5 + 1
     baseline_ld = rng.rand(50, 3)
     w_ld_vals = np.maximum(rng.rand(50), 0.1)
-    N_bar, M_total = 50000.0, 1e6
+    N = np.linspace(25_000.0, 75_000.0, len(y))
+    M_total = 1e6
 
-    w = _sldsc_weights(y, baseline_ld, w_ld_vals, N_bar, M_total)
+    w = _sldsc_weights(y, baseline_ld, w_ld_vals, N, M_total)
 
     # Inline reference
     x_tot = baseline_ld.sum(axis=1)
-    h2_init = np.clip((y.mean() - 1) * M_total / (N_bar * x_tot.mean()), 0.01, 1.0)
-    Ey = 1.0 + np.clip(h2_init * N_bar / M_total * x_tot, 0, 1e4)
+    h2_init = np.clip((y.mean() - 1) * M_total / np.mean(N * x_tot), 0.0, 1.0)
+    Ey = 1.0 + h2_init * N / M_total * np.maximum(x_tot, 1.0)
     expected = 1.0 / (2.0 * Ey**2 * w_ld_vals)
 
     np.testing.assert_allclose(w, expected, rtol=1e-15)
@@ -495,12 +515,17 @@ def test_sldsc_weights_matches_inline():
 def test_order_genomically_restores_baseline_order():
     """The frame is sorted into the baseline's row order, whatever it arrives in."""
     _, baseline, _, _ = _toy_regression_inputs()
-    scrambled = pd.DataFrame({"SNP": ["rs4", "rs1", "rs5", "rs3", "rs2"],
-                              "value": [4.0, 1.0, 5.0, 3.0, 2.0]})
+    permutation = np.random.default_rng(7).permutation(len(baseline))
+    scrambled = pd.DataFrame(
+        {
+            "SNP": baseline["SNP"].iloc[permutation].values,
+            "value": permutation,
+        }
+    )
     ordered = _order_genomically(scrambled, baseline)
     assert list(ordered["SNP"]) == list(baseline["SNP"])
-    assert list(ordered["value"]) == [1.0, 2.0, 3.0, 4.0, 5.0]
-    assert list(ordered.index) == list(range(5))
+    assert list(ordered["value"]) == list(range(len(baseline)))
+    assert list(ordered.index) == list(range(len(baseline)))
 
 
 def test_sldsc_is_invariant_to_the_order_the_frame_arrives_in():
@@ -515,7 +540,7 @@ def test_sldsc_is_invariant_to_the_order_the_frame_arrives_in():
     cfg = RegressionConfig(n_blocks=5)
     ordered = run_sldsc_custom(sumstats, baseline, annot_ld, w_ld, 1000.0, cfg)
 
-    perm = [3, 0, 4, 2, 1]
+    perm = np.random.default_rng(8).permutation(len(sumstats))
     shuffled = run_sldsc_custom(
         sumstats.iloc[perm].reset_index(drop=True),
         baseline, annot_ld, w_ld, 1000.0, cfg,
@@ -530,7 +555,7 @@ def test_per_pair_is_invariant_to_the_order_the_frame_arrives_in():
     sumstats, baseline, annot_ld, w_ld = _toy_regression_inputs()
     cfg = RegressionConfig(n_blocks=5)
     snp_names = list(baseline["SNP"])
-    pair_ld = {"A-B": np.array([0.5, 0.1, 0.2, 0.4, 0.3])}
+    pair_ld = {"A-B": np.linspace(0.1, 0.9, len(sumstats))}
 
     def run(ss):
         return run_per_pair_ldsc_custom(
@@ -541,6 +566,7 @@ def test_per_pair_is_invariant_to_the_order_the_frame_arrives_in():
         )
 
     a = run(sumstats)
-    b = run(sumstats.iloc[[3, 0, 4, 2, 1]].reset_index(drop=True))
+    perm = np.random.default_rng(9).permutation(len(sumstats))
+    b = run(sumstats.iloc[perm].reset_index(drop=True))
     assert a.loc[0, "tau"] == pytest.approx(b.loc[0, "tau"], rel=1e-12)
     assert a.loc[0, "se"] == pytest.approx(b.loc[0, "se"], rel=1e-12)

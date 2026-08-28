@@ -3,7 +3,7 @@ from pathlib import Path
 
 def test_no_internal_absolute_paths_in_package_sources():
     """Prevent leaking internal machine/server paths into shipped code."""
-    root = Path(__file__).resolve().parents[3]
+    root = Path(__file__).resolve().parents[1]
     pkg = root / "src" / "edgemap"
 
     forbidden_fragments = [
@@ -18,8 +18,6 @@ def test_no_internal_absolute_paths_in_package_sources():
     offenders: list[tuple[Path, str]] = []
     for path in pkg.rglob("*"):
         if not path.is_file():
-            continue
-        if "src/edgemap/tests/" in str(path):
             continue
         if path.suffix not in {".py", ".md", ".txt", ".toml", ".csv"}:
             continue

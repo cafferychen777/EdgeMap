@@ -14,8 +14,16 @@ from edgemap.spatial import (
 )
 
 
+def _weighted_neighbor_mean(W, values):
+    row_weight = np.asarray(W.sum(axis=1)).ravel()
+    out = np.full_like(values, np.nan, dtype=float)
+    valid = row_weight > 0
+    out[valid] = np.asarray(W @ values).ravel()[valid] / row_weight[valid]
+    return out
+
+
 def test_compute_communication_simple():
-    """Verify comm(j) = (W @ L)(j) * R(j) on a 3-cell example."""
+    """Verify comm(j) = weighted_neighbor_mean(L)(j) * R(j)."""
     # 3 cells, 2 genes: LIG at idx 0, REC at idx 1
     # Expression in log1p scale
     X = np.array([
@@ -49,9 +57,9 @@ def test_compute_communication_simple():
     # comm = spatial_L * R_nat = [0, 1.374*6.389, 0] ≈ [0, 8.78, 0]
     L_nat = np.expm1(X[:, 0])
     R_nat = np.expm1(X[:, 1])
-    expected = (W @ L_nat) * R_nat
+    expected = _weighted_neighbor_mean(W, L_nat) * R_nat
 
-    np.testing.assert_allclose(comm[:, 0], expected, rtol=1e-10)
+    np.testing.assert_allclose(comm[:, 0], expected, rtol=1e-10, equal_nan=True)
 
 
 def test_compute_communication_heteromeric():
@@ -62,7 +70,11 @@ def test_compute_communication_heteromeric():
         [0.5, 2.0, 0.5],  # LIG1 low, LIG2 high → L_eff = LIG1
         [1.0, 1.0, 1.5],  # equal
     ])
-    W = sparse.eye(3, format="csr") * 0.5  # self-loop only
+    W = sparse.csr_matrix(np.array([
+        [0.0, 1.0, 1.0],
+        [1.0, 0.0, 1.0],
+        [1.0, 1.0, 0.0],
+    ]))
 
     pairs = [(["LIG1", "LIG2"], ["REC"], "LIG1_LIG2-REC")]
     genes = ["LIG1", "LIG2", "REC"]
@@ -73,7 +85,7 @@ def test_compute_communication_heteromeric():
     L2 = np.expm1(X[:, 1])
     L_eff = np.minimum(L1, L2)
     R_nat = np.expm1(X[:, 2])
-    expected = (W @ L_eff) * R_nat
+    expected = _weighted_neighbor_mean(W, L_eff) * R_nat
 
     np.testing.assert_allclose(comm[:, 0], expected, rtol=1e-10)
 
@@ -127,15 +139,15 @@ def test_subunit_expression_multi():
 def test_build_spatial_graph_invalid_dmax():
     """Distance threshold must be positive."""
     coords = np.array([[0.0, 0.0], [1.0, 1.0]])
-    with pytest.raises(ValueError, match="d_max must be > 0"):
+    with pytest.raises(ValueError, match="d_max must be finite and > 0"):
         build_spatial_graph(coords, k=1, d_max=0.0)
-    with pytest.raises(ValueError, match="d_max must be > 0"):
+    with pytest.raises(ValueError, match="d_max must be finite and > 0"):
         build_spatial_graph(coords, k=1, d_max=-1.0)
 
 
 def test_build_spatial_graph_invalid_kernel_bandwidth():
     coords = np.array([[0.0, 0.0], [1.0, 1.0]])
-    with pytest.raises(ValueError, match="kernel_bandwidth_frac must be > 0"):
+    with pytest.raises(ValueError, match="kernel_bandwidth_frac must be finite and > 0"):
         build_spatial_graph(coords, k=1, d_max=2.0, kernel_bandwidth_frac=0.0)
 
 

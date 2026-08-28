@@ -55,7 +55,6 @@ edgemap = "edgemap.cli:main"
 [tool.hatch.build.targets.wheel]
 packages = ["src/edgemap"]
 exclude = [
-    "src/edgemap/tests/",
     # These experimental modules are present in some development worktrees but
     # are not part of the reviewed public release API.
     "src/edgemap/genetic_response.py",
@@ -66,6 +65,7 @@ exclude = [
 [tool.hatch.build.targets.sdist]
 include = [
     "src/edgemap",
+    "tests",
     "README.md",
     "LICENSE",
     "CHANGELOG.md",
@@ -81,7 +81,6 @@ exclude = [
     "/reproducibility",
     "/tmp",
     "**/node_modules",
-    "src/edgemap/tests",
     "src/edgemap/genetic_response.py",
     "src/edgemap/response.py",
     "src/edgemap/simulation.py",
@@ -92,4 +91,4 @@ exclude = [
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["src/edgemap/tests"]
+testpaths = ["tests"]

@@ -10,6 +10,8 @@
 !pyproject.toml
 !.github/
 !.github/release.yml
+!.github/workflows/
+!.github/workflows/ci.yml
 !src/
 !src/edgemap/
 !src/edgemap/**
@@ -22,6 +24,10 @@
 !quickstart/output/results.json
 !quickstart/output/lr_pair_stats.json
 
+# Test suite
+!tests/
+!tests/**
+
 # Publication audit and reproducibility contract. This directory contains
 # documentation and manifests only; analysis code and frozen outputs are
 # admitted individually after the release checks described there pass.
@@ -32,9 +38,9 @@
 !reproducibility/RELEASE_CHECKLIST.md
 !reproducibility/ED_FIGURE_AUDIT.md
 
-# Exclude build/cache artifacts that land inside src/
-src/edgemap/**/__pycache__/
-src/edgemap/**/*.pyc
+# Exclude generated Python/build artifacts after package and test un-ignores.
+**/__pycache__/
+*.py[cod]
 *.egg-info/
 dist/
 build/

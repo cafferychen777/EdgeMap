@@ -48,7 +48,7 @@ def _patch_pipeline_common(monkeypatch, adata: ad.AnnData, edge_p: float) -> Non
             np.array([[True, True], [True, True], [True, True]], dtype=bool),
         ),
     )
-    monkeypatch.setattr("edgemap.pipeline.load_lr_pairs", lambda *_: [(["G0"], ["G1"], "G0-G1")])
+    monkeypatch.setattr("edgemap.pipeline.load_lr_pairs", lambda *_, **__: [(["G0"], ["G1"], "G0-G1")])
     monkeypatch.setattr(
         "edgemap.pipeline.compute_communication",
         lambda *args, **kwargs: (
@@ -407,7 +407,7 @@ def test_pipeline_releases_large_graph_objects_before_next_stage(monkeypatch, tm
     monkeypatch.setattr("edgemap.pipeline.resolve_resource_dir", lambda _: Path("/fake_resource"))
     monkeypatch.setattr("edgemap.pipeline.load_st", lambda *_: FakeAdata())
     monkeypatch.setattr("edgemap.pipeline.build_spatial_graph", fake_build_spatial_graph)
-    monkeypatch.setattr("edgemap.pipeline.load_lr_pairs", lambda *_: [(["G0"], ["G1"], "G0-G1")])
+    monkeypatch.setattr("edgemap.pipeline.load_lr_pairs", lambda *_, **__: [(["G0"], ["G1"], "G0-G1")])
     monkeypatch.setattr("edgemap.pipeline.compute_communication", fake_compute_communication)
     monkeypatch.setattr(
         "edgemap.pipeline.compute_edge_scores",
