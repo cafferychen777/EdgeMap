@@ -1,5 +1,7 @@
 [build-system]
-requires = ["hatchling"]
+# Keep built distributions on Metadata-Version 2.4 until release validators
+# accept Metadata-Version 2.5.
+requires = ["hatchling>=1.27,<1.32"]
 build-backend = "hatchling.build"
 
 [project]
@@ -65,7 +67,6 @@ exclude = [
 [tool.hatch.build.targets.sdist]
 include = [
     "src/edgemap",
-    "tests",
     "README.md",
     "LICENSE",
     "CHANGELOG.md",

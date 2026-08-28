@@ -6,8 +6,11 @@ This changelog tracks public package, CLI, API, and release-facing metadata chan
 
 ### Changed
 - Moved the source test suite from `src/edgemap/tests` to the top-level
-  `tests/` directory and added CI coverage for linting, source tests, and the
-  installed wheel release surface.
+  `tests/` directory as a repository/CI asset, and added CI coverage for
+  linting, source tests, and the installed wheel release surface.
+- Pinned the build backend below the first release that emits
+  `Metadata-Version: 2.5`, keeping source and wheel distributions compatible
+  with the current release validation toolchain.
 
 ## [0.3.0] - 2026-08-09
 

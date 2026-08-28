@@ -58,8 +58,7 @@ their incomplete scope is stated explicitly.
       archival data mechanism.
 - [ ] Check all Markdown and manuscript links from a clean clone.
 - [ ] Build the sdist and wheel; inspect their file lists for accidental data,
-      manuscript files, caches, or personal artifacts. The sdist may include
-      the top-level test suite; the wheel must not install tests.
+      manuscript files, tests, caches, or personal artifacts.
 
 ## Verification commands
 
