@@ -4,6 +4,11 @@ This changelog tracks public package, CLI, API, and release-facing metadata chan
 
 ## [Unreleased]
 
+### Changed
+- Moved the source test suite from `src/edgemap/tests` to the top-level
+  `tests/` directory and added CI coverage for linting, source tests, and the
+  installed wheel release surface.
+
 ## [0.3.0] - 2026-08-09
 
 ### Changed

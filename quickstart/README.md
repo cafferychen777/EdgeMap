@@ -143,7 +143,7 @@ edgemap --st your_tissue.h5ad \
 ### Input format requirements
 
 **Spatial transcriptomics** (`h5ad`):
-- `.X`: raw integer counts (genes x cells/spots)
+- `.X`: raw integer counts (cells/spots x genes)
 - `.obsm["spatial"]`: 2D spatial coordinates (n_spots x 2)
 - `.var_names`: gene symbols (must be unique)
 
